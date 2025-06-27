@@ -1,4 +1,4 @@
-package org.unicam.intermediate.Activity;
+package org.unicam.intermediate.activity;
 
 import org.camunda.bpm.engine.impl.bpmn.behavior.AbstractBpmnActivityBehavior;
 import org.camunda.bpm.engine.impl.pvm.delegate.ActivityExecution;

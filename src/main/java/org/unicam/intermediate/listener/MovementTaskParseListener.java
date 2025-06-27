@@ -1,4 +1,4 @@
-package org.unicam.intermediate.Listener;
+package org.unicam.intermediate.listener;
 
 import org.camunda.bpm.engine.delegate.ExecutionListener;
 import org.camunda.bpm.engine.impl.bpmn.parser.AbstractBpmnParseListener;
@@ -7,7 +7,7 @@ import org.camunda.bpm.engine.impl.pvm.process.ScopeImpl;
 import org.camunda.bpm.engine.impl.util.xml.Element;
 import org.camunda.bpm.engine.impl.util.xml.Namespace;
 import org.springframework.stereotype.Component;
-import org.unicam.intermediate.Activity.WaitStateActivity;
+import org.unicam.intermediate.activity.WaitStateActivity;
 
 @Component
 public class MovementTaskParseListener extends AbstractBpmnParseListener {

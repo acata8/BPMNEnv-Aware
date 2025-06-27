@@ -1,10 +1,10 @@
-package org.unicam.intermediate.Config;
+package org.unicam.intermediate.config;
 
 import org.camunda.bpm.engine.spring.SpringProcessEngineConfiguration;
 import org.camunda.bpm.spring.boot.starter.configuration.impl.AbstractCamundaConfiguration;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
-import org.unicam.intermediate.Listener.MovementTaskParseListener;
+import org.unicam.intermediate.listener.MovementTaskParseListener;
 
 @Configuration
 public class CamundaConfig extends AbstractCamundaConfiguration {
