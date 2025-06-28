@@ -12,6 +12,7 @@ import org.unicam.intermediate.controller.dto.ProcessStatusResponse;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 
 @RestController
 @RequestMapping("/api/process")
@@ -23,10 +24,14 @@ public class ProcessController {
     @Autowired
     private HistoryService historyService;
 
+    private final AtomicReference<String> lastPid = new AtomicReference<>();
+
     @PostMapping("/start")
     public ResponseEntity<ProcessStartResponse> startProcess(@RequestParam("processId") String processId) {
         ProcessInstance instance = runtimeService.startProcessInstanceByKey(processId);
-        return ResponseEntity.ok(new ProcessStartResponse(instance.getProcessInstanceId(), instance.getProcessDefinitionKey()));
+        String pid = instance.getProcessInstanceId();
+        lastPid.set(pid);
+        return ResponseEntity.ok(new ProcessStartResponse(pid, instance.getProcessDefinitionKey()));
     }
 
     @GetMapping("/status")
@@ -42,5 +47,14 @@ public class ProcessController {
 
         String status = (instance.getEndTime() == null) ? "ACTIVE_OR_SUSPENDED" : "ENDED";
         return ResponseEntity.ok(new ProcessStatusResponse(pid, status, instance.getEndTime() != null ? instance.getEndTime().toInstant() : null));
+    }
+
+    @GetMapping("/last")
+    public ResponseEntity<Map<String, String>> getLastPid() {
+        String pid = lastPid.get();
+        if (pid == null) {
+            return ResponseEntity.status(404).body(Map.of("error", "No process started yet"));
+        }
+        return ResponseEntity.ok(Map.of("pid", pid));
     }
 }
