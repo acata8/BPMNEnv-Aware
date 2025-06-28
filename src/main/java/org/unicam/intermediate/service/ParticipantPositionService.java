@@ -13,6 +13,10 @@ public class ParticipantPositionService {
 
     public void updatePosition(String participantId, double lat, double lon, String destination) {
         positions.put(participantId, new Coordinate(lat, lon, destination));
+
+        Coordinate coord = getPosition(participantId);
+
+        System.out.println("[Participant Position] " + coord);
     }
 
     public Coordinate getPosition(String participantId) {

@@ -72,18 +72,21 @@ public class MovementController {
 
             if (participant != null) {
                 positionService.updatePosition(participantId, lat, lon, destinationKey);
+                System.out.println("[GPS Received] Valid coordinate. Destination: " + destinationKey + "participantID: " + participantId);
                 runtimeService.signal(execution.getId());
-
                 return ResponseEntity.ok(
                         new MovementResponse(true, "Device is inside the area", destinationKey, participantId)
                 );
             }
 
+            System.out.println("[GPS Received] Correct position, participant not found participantID: " + participantId);
             return ResponseEntity.status(404).body(
                     new MovementResponse(false, "Correct position, but participant not found", destinationKey, participantId)
             );
+
         }
 
+        System.out.println("[GPS Received] Device is NOT inside the area. Destination: " + destinationKey + "participantID: " + participantId);
         return ResponseEntity.ok(
                 new MovementResponse(false, "Device is NOT inside the area", destinationKey, participantId)
         );
