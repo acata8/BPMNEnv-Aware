@@ -20,7 +20,12 @@ import java.util.Map;
 public class MovementController {
 
     private final Map<String, LocationArea> destinations = Map.of(
-        "Position_T1", new LocationArea(10.0, 15.0, 20.0, 25.0)  // xMin, xMax, yMin, yMax
+            "CS@Unicam", new LocationArea(
+                    13.068471,
+                    13.069082,
+                    43.139401,
+                    43.139775
+            )
     );
 
     @Autowired

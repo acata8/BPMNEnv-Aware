@@ -25,12 +25,14 @@
     </bpmn:task>
     <bpmn:task id="Activity_1stc37q" name="Move to Destination">
       <bpmn:extensionElements>
-        <space:destination>Position_T1</space:destination>
+        <space:destination>CS@Unicam</space:destination>
         <space:type>movement</space:type>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_1mh7v14</bpmn:incoming>
       <bpmn:outgoing>Flow_0wghfs1</bpmn:outgoing>
     </bpmn:task>
+
+
     <bpmn:task id="Activity_0lrkjzp" name="Do B">
       <bpmn:incoming>Flow_0wghfs1</bpmn:incoming>
       <bpmn:outgoing>Flow_0ytosrs</bpmn:outgoing>

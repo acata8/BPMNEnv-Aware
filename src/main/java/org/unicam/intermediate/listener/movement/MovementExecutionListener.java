@@ -9,7 +9,7 @@ public class MovementExecutionListener implements ExecutionListener {
 
     @Override
     public void notify(DelegateExecution execution) {
-        execution.setVariable("destination", "Position_T1");
+        execution.setVariable("destination", "CS@Unicam");
         System.out.println(">>> Task type: movement. Execute custom logic.");
     }
 }
