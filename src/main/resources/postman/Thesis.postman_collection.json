@@ -77,6 +77,25 @@
 								}
 							},
 							"response": []
+						},
+						{
+							"name": "Get last PID",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/api/process/last",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"process",
+										"last"
+									]
+								}
+							},
+							"response": []
 						}
 					]
 				},
