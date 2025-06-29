@@ -11,6 +11,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.unicam.intermediate.controller.dto.MovementResponse;
 import org.unicam.intermediate.models.LocationArea;
+import org.unicam.intermediate.service.LogService;
 import org.unicam.intermediate.service.ParticipantPositionService;
 
 import java.util.Map;
@@ -36,6 +37,9 @@ public class MovementController {
 
     @Autowired
     private ParticipantPositionService positionService;
+
+    @Autowired
+    private LogService logService;
 
     @PostMapping("/gps")
     public ResponseEntity<MovementResponse> receiveGps(
@@ -77,21 +81,27 @@ public class MovementController {
 
             if (participant != null) {
                 positionService.updatePosition(participantId, lat, lon, destinationKey);
-                System.out.println("[GPS Received] Valid coordinate. Destination: " + destinationKey + "participantID: " + participantId);
-                runtimeService.signal(execution.getId());
+        logService.addLog("[GPS Received] Valid coordinate. participantID: " + participantId);
+
+        runtimeService.signal(execution.getId());
+
+            logService.addLog("[Participant "+participantId+" position] Update " + positionService.getDestination(participantId));
+
                 return ResponseEntity.ok(
                         new MovementResponse(true, "Device is inside the area", destinationKey, participantId)
                 );
             }
 
-            System.out.println("[GPS Received] Correct position, participant not found participantID: " + participantId);
+
+        logService.addLog("[GPS Received] Correct position, participantID: " + participantId + "  not found");
             return ResponseEntity.status(404).body(
                     new MovementResponse(false, "Correct position, but participant not found", destinationKey, participantId)
             );
 
         }
 
-        System.out.println("[GPS Received] Device is NOT inside the area. Destination: " + destinationKey + "participantID: " + participantId);
+
+        logService.addLog("[GPS Received] Device is NOT inside the area. participantID: " + participantId);
         return ResponseEntity.ok(
                 new MovementResponse(false, "Device is NOT inside the area", destinationKey, participantId)
         );

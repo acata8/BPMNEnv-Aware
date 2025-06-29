@@ -6,11 +6,19 @@ import org.camunda.bpm.engine.impl.pvm.process.ActivityImpl;
 import org.camunda.bpm.engine.impl.pvm.process.ScopeImpl;
 import org.camunda.bpm.engine.impl.util.xml.Element;
 import org.camunda.bpm.engine.impl.util.xml.Namespace;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.unicam.intermediate.activity.WaitStateActivity;
+import org.unicam.intermediate.service.LogService;
 
 @Component
 public class MovementParseListener extends AbstractBpmnParseListener {
+
+    private final LogService logService;
+
+    public MovementParseListener(LogService logService) {
+        this.logService = logService;
+    }
 
     private static final Namespace SPACE_NAMESPACE = new Namespace("space", "http://space");
 
@@ -20,8 +28,8 @@ public class MovementParseListener extends AbstractBpmnParseListener {
         if (extensions != null) {
             Element typeElement = extensions.elementNS(SPACE_NAMESPACE, "type");
             if (typeElement != null && "movement".equals(typeElement.getText())) {
-                activity.setActivityBehavior(new WaitStateActivity());
-                activity.addListener(ExecutionListener.EVENTNAME_START, new MovementExecutionListener());
+                activity.setActivityBehavior(new WaitStateActivity(logService));
+                activity.addListener(ExecutionListener.EVENTNAME_START, new MovementExecutionListener(logService));
             }
         }
     }

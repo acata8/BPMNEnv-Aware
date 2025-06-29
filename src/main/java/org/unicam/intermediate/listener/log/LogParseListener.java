@@ -6,13 +6,20 @@ import org.camunda.bpm.engine.impl.pvm.process.ActivityImpl;
 import org.camunda.bpm.engine.impl.pvm.process.ScopeImpl;
 import org.camunda.bpm.engine.impl.util.xml.Element;
 import org.springframework.stereotype.Component;
+import org.unicam.intermediate.service.LogService;
 
 @Component
 public class LogParseListener extends AbstractBpmnParseListener {
 
+    private final LogService logService;
+
+    public LogParseListener(LogService logService) {
+        this.logService = logService;
+    }
+
     @Override
     public void parseTask(Element taskElement, ScopeImpl scope, ActivityImpl activity) {
-        activity.addListener(ExecutionListener.EVENTNAME_START, new LogExecutionListener());
-        activity.addListener(ExecutionListener.EVENTNAME_END, new LogExecutionListener());
+        activity.addListener(ExecutionListener.EVENTNAME_START, new LogExecutionListener(logService));
+        activity.addListener(ExecutionListener.EVENTNAME_END, new LogExecutionListener(logService));
     }
 }
