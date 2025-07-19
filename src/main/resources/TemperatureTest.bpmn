@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:camunda="http://camunda.org/schema/1.0/bpmn" xmlns:space="http://space" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_0y5fk9a" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.36.1" modeler:executionPlatform="Camunda Platform" modeler:executionPlatformVersion="7.23.0">
+  <bpmn:collaboration id="Collaboration_1cm2hwb">
+    <bpmn:participant id="Participant_0n5pxvz" name="Participant" processRef="Partecipante" />
+    <bpmn:participant id="Participant_0t6zsc3" name="Thermometer" processRef="Termometro" />
+    <bpmn:messageFlow id="Flow_1rkprjv" sourceRef="Send_Temperature" targetRef="Wait_Temperature" />
+    <bpmn:textAnnotation id="TextAnnotation_1bbbaia">
+      <bpmn:text>Send a temperature between 29 and 32</bpmn:text>
+    </bpmn:textAnnotation>
+    <bpmn:association id="Association_045km81" associationDirection="None" sourceRef="Flow_1rkprjv" targetRef="TextAnnotation_1bbbaia" />
+  </bpmn:collaboration>
+  <bpmn:process id="Partecipante" name="" isExecutable="true" camunda:historyTimeToLive="1">
+    <bpmn:exclusiveGateway id="Gateway_0u3u37u">
+      <bpmn:incoming>Flow_17z1h2s</bpmn:incoming>
+      <bpmn:outgoing>Flow_1rji545</bpmn:outgoing>
+      <bpmn:outgoing>Flow_0nad5sp</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:task id="Move_To_Destination" name="Move to Destination">
+      <bpmn:extensionElements>
+        <space:destination>CS@Unicam</space:destination>
+        <space:type>movement</space:type>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_1rji545</bpmn:incoming>
+      <bpmn:outgoing>Flow_0zg6271</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:startEvent id="Wait_Temperature">
+      <bpmn:outgoing>Flow_0xtvn4d</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="MessageEventDefinition_0gfwqy3" messageRef="Message_2tvb6ur" />
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_1rji545" sourceRef="Gateway_0u3u37u" targetRef="Move_To_Destination">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${isCritical}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:endEvent id="End_Wait">
+      <bpmn:incoming>Flow_02d3cvm</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_17z1h2s" sourceRef="Analyze_Temperature" targetRef="Gateway_0u3u37u" />
+    <bpmn:sequenceFlow id="Flow_0xtvn4d" sourceRef="Wait_Temperature" targetRef="Analyze_Temperature" />
+    <bpmn:serviceTask id="Analyze_Temperature" name="Analyze data" camunda:class="org.unicam.intermediate.delegateExpression.AnalyzeTemperatureDelegate">
+      <bpmn:incoming>Flow_0xtvn4d</bpmn:incoming>
+      <bpmn:outgoing>Flow_17z1h2s</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:task id="Do_B" name="Do B">
+      <bpmn:incoming>Flow_0zg6271</bpmn:incoming>
+      <bpmn:incoming>Flow_0nad5sp</bpmn:incoming>
+      <bpmn:outgoing>Flow_02d3cvm</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:sequenceFlow id="Flow_02d3cvm" sourceRef="Do_B" targetRef="End_Wait" />
+    <bpmn:sequenceFlow id="Flow_0zg6271" sourceRef="Move_To_Destination" targetRef="Do_B" />
+    <bpmn:sequenceFlow id="Flow_0nad5sp" sourceRef="Gateway_0u3u37u" targetRef="Do_B">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${!isCritical}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+  </bpmn:process>
+  <bpmn:process id="Termometro" name="" isExecutable="true" camunda:historyTimeToLive="1">
+    <bpmn:endEvent id="End_Temperature">
+      <bpmn:incoming>Flow_1bvf0xe</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:startEvent id="Cycle_Temperature" camunda:initiator="">
+      <bpmn:outgoing>Flow_1aadcld</bpmn:outgoing>
+      <bpmn:timerEventDefinition id="TimerEventDefinition_1rdom5d">
+        <bpmn:timeCycle xsi:type="bpmn:tFormalExpression">R3/PT50S</bpmn:timeCycle>
+      </bpmn:timerEventDefinition>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_1aadcld" sourceRef="Cycle_Temperature" targetRef="Send_Temperature" />
+    <bpmn:sequenceFlow id="Flow_1bvf0xe" sourceRef="Send_Temperature" targetRef="End_Temperature" />
+    <bpmn:sendTask id="Send_Temperature" name="Send temperature" camunda:class="org.unicam.intermediate.delegateExpression.SendTemperatureDelegate">
+      <bpmn:extensionElements />
+      <bpmn:incoming>Flow_1aadcld</bpmn:incoming>
+      <bpmn:outgoing>Flow_1bvf0xe</bpmn:outgoing>
+    </bpmn:sendTask>
+  </bpmn:process>
+  <bpmn:message id="Message_2tvb6ur" name="Message_Temperature" />
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Collaboration_1cm2hwb">
+      <bpmndi:BPMNShape id="Participant_0n5pxvz_di" bpmnElement="Participant_0n5pxvz" isHorizontal="true">
+        <dc:Bounds x="132" y="400" width="906" height="320" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_0u3u37u_di" bpmnElement="Gateway_0u3u37u" isMarkerVisible="true">
+        <dc:Bounds x="425" y="505" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_0yh83b8_di" bpmnElement="Do_B">
+        <dc:Bounds x="730" y="490" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_1yicapt_di" bpmnElement="Move_To_Destination">
+        <dc:Bounds x="540" y="610" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_1ass2gp_di" bpmnElement="Wait_Temperature">
+        <dc:Bounds x="182" y="512" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_157l9bb_di" bpmnElement="End_Wait">
+        <dc:Bounds x="902" y="512" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_1ipwstv_di" bpmnElement="Analyze_Temperature">
+        <dc:Bounds x="270" y="490" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_0xtvn4d_di" bpmnElement="Flow_0xtvn4d">
+        <di:waypoint x="218" y="530" />
+        <di:waypoint x="270" y="530" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_17z1h2s_di" bpmnElement="Flow_17z1h2s">
+        <di:waypoint x="370" y="530" />
+        <di:waypoint x="425" y="530" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1rji545_di" bpmnElement="Flow_1rji545">
+        <di:waypoint x="450" y="555" />
+        <di:waypoint x="450" y="650" />
+        <di:waypoint x="540" y="650" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0nad5sp_di" bpmnElement="Flow_0nad5sp">
+        <di:waypoint x="475" y="530" />
+        <di:waypoint x="730" y="530" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0zg6271_di" bpmnElement="Flow_0zg6271">
+        <di:waypoint x="640" y="650" />
+        <di:waypoint x="780" y="650" />
+        <di:waypoint x="780" y="570" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_02d3cvm_di" bpmnElement="Flow_02d3cvm">
+        <di:waypoint x="830" y="530" />
+        <di:waypoint x="902" y="530" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNShape id="Participant_0t6zsc3_di" bpmnElement="Participant_0t6zsc3" isHorizontal="true">
+        <dc:Bounds x="132" y="80" width="600" height="250" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_1e9x8ei_di" bpmnElement="End_Temperature">
+        <dc:Bounds x="622" y="192" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_0gyrqdo_di" bpmnElement="Cycle_Temperature">
+        <dc:Bounds x="212" y="192" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_1llt9pa_di" bpmnElement="Send_Temperature">
+        <dc:Bounds x="380" y="170" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_1aadcld_di" bpmnElement="Flow_1aadcld">
+        <di:waypoint x="248" y="210" />
+        <di:waypoint x="380" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1bvf0xe_di" bpmnElement="Flow_1bvf0xe">
+        <di:waypoint x="480" y="210" />
+        <di:waypoint x="622" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Association_045km81_di" bpmnElement="Association_045km81">
+        <di:waypoint x="315" y="381" />
+        <di:waypoint x="391" y="420" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1rkprjv_di" bpmnElement="Flow_1rkprjv">
+        <di:waypoint x="430" y="250" />
+        <di:waypoint x="430" y="381" />
+        <di:waypoint x="200" y="381" />
+        <di:waypoint x="200" y="512" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNShape id="TextAnnotation_1bbbaia_di" bpmnElement="TextAnnotation_1bbbaia">
+        <dc:Bounds x="370" y="420" width="247" height="30" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
