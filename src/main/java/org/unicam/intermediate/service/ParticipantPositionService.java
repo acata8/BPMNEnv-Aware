@@ -1,5 +1,6 @@
 package org.unicam.intermediate.service;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.unicam.intermediate.models.Coordinate;
@@ -8,13 +9,8 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Service
+@Slf4j
 public class ParticipantPositionService {
-
-    public final LogService logService;
-
-    public ParticipantPositionService(LogService logService) {
-        this.logService = logService;
-    }
 
     private final Map<String, Coordinate> positions = new ConcurrentHashMap<>();
 

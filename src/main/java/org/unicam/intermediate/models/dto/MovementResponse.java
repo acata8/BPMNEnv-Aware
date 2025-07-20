@@ -1,4 +1,4 @@
-package org.unicam.intermediate.controller.dto;
+package org.unicam.intermediate.models.dto;
 
 public class MovementResponse {
     private boolean success;

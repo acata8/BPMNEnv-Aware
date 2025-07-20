@@ -1,5 +1,6 @@
 package org.unicam.intermediate.controller;
 
+import lombok.extern.slf4j.Slf4j;
 import org.camunda.bpm.engine.HistoryService;
 import org.camunda.bpm.engine.RuntimeService;
 import org.camunda.bpm.engine.history.HistoricProcessInstance;
@@ -7,15 +8,15 @@ import org.camunda.bpm.engine.runtime.ProcessInstance;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import org.unicam.intermediate.controller.dto.ProcessStartResponse;
-import org.unicam.intermediate.controller.dto.ProcessStatusResponse;
+import org.unicam.intermediate.models.dto.ProcessStartResponse;
+import org.unicam.intermediate.models.dto.ProcessStatusResponse;
 
-import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
 @RestController
 @RequestMapping("/api/process")
+@Slf4j
 public class ProcessController {
 
     @Autowired
