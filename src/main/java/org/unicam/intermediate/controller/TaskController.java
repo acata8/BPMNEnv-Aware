@@ -20,7 +20,7 @@ public class TaskController {
     private final TaskService taskService;
     private final IdentityService identityService;
 
-    @GetMapping
+    @GetMapping("/getTasksByUser")
     public ResponseEntity<List<Map<String, Object>>> getTasksByUser(@RequestParam("userId") String userId) {
         Set<String> seenTaskIds = new HashSet<>();
         List<Map<String, Object>> result = new ArrayList<>();
@@ -75,7 +75,7 @@ public class TaskController {
      * POST /api/tasks/{taskId}/claim?userId=demo
      */
     @PostMapping("/{taskId}/claim")
-    public ResponseEntity<String> claimTask(@PathVariable String taskId, @RequestParam String userId) {
+    public ResponseEntity<String> claimTask(@PathVariable("taskId") String taskId, @RequestParam("userId") String userId) {
         taskService.claim(taskId, userId);
         return ResponseEntity.ok("Task " + taskId + " claimed by " + userId);
     }
@@ -86,7 +86,7 @@ public class TaskController {
      */
     @PostMapping("/{taskId}/complete")
     public ResponseEntity<String> completeTask(
-            @PathVariable String taskId,
+            @PathVariable("taskId") String taskId,
             @RequestBody(required = false) Map<String, Map<String, Object>> variables
     ) {
         Map<String, Object> camundaVars = new HashMap<>();
