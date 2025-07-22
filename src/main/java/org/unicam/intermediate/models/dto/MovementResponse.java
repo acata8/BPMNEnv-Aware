@@ -1,20 +1,25 @@
 package org.unicam.intermediate.models.dto;
 
-public class MovementResponse {
-    private boolean success;
-    private String message;
-    private String destination;
-    private String participantId;
+import lombok.Getter;
 
-    public MovementResponse(boolean success, String message, String destination, String participantId) {
+public class MovementResponse {
+    @Getter
+    private boolean success;
+    @Getter
+    private String message;
+    @Getter
+    private String destination;
+    @Getter
+    private String participantId;
+    @Getter
+    private String processId;
+
+    public MovementResponse(boolean success, String message, String destination, String participantId, String processId) {
         this.success = success;
         this.message = message;
         this.destination = destination;
         this.participantId = participantId;
+        this.processId = processId;
     }
 
-    public boolean isSuccess() { return success; }
-    public String getMessage() { return message; }
-    public String getDestination() { return destination; }
-    public String getParticipantId() { return participantId; }
 }

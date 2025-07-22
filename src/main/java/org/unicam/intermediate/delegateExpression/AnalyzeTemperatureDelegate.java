@@ -13,9 +13,6 @@ import java.util.Map;
 @Slf4j
 public class AnalyzeTemperatureDelegate implements JavaDelegate {
 
-    @Autowired
-    private RuntimeService runtimeService;
-
     @Override
     public void execute(DelegateExecution execution) {
         double temp = (double) execution.getVariable("valore");

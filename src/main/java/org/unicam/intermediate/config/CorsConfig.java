@@ -14,7 +14,7 @@ public class CorsConfig {
             public void addCorsMappings(CorsRegistry registry) {
 
                 // solo per scopo di demo`
-                registry.addMapping("/**")
+                registry.addMapping("/api/**")
                         .allowedOrigins("http://localhost:8081")
                         .allowedMethods("GET", "POST")
                         .allowedHeaders("*");

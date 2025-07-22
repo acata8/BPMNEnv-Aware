@@ -1,61 +1,79 @@
 package org.unicam.intermediate.controller;
 
 import lombok.extern.slf4j.Slf4j;
-import org.camunda.bpm.engine.HistoryService;
 import org.camunda.bpm.engine.RuntimeService;
-import org.camunda.bpm.engine.history.HistoricProcessInstance;
+import org.camunda.bpm.engine.TaskService;
 import org.camunda.bpm.engine.runtime.ProcessInstance;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.camunda.bpm.engine.task.Task;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.unicam.intermediate.models.dto.ProcessStartResponse;
-import org.unicam.intermediate.models.dto.ProcessStatusResponse;
 
+import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/process")
 @Slf4j
 public class ProcessController {
 
-    @Autowired
-    private RuntimeService runtimeService;
+    private final RuntimeService runtimeService;
 
-    @Autowired
-    private HistoryService historyService;
+    private final TaskService taskService;
 
-    private final AtomicReference<String> lastPid = new AtomicReference<>();
+    public ProcessController(RuntimeService runtimeService,  TaskService taskService) {
+        this.runtimeService = runtimeService;
+        this.taskService =  taskService;
+    }
 
     @PostMapping("/start")
-    public ResponseEntity<ProcessStartResponse> startProcess(@RequestParam("processId") String processId) {
-        ProcessInstance instance = runtimeService.startProcessInstanceByKey(processId);
-        String pid = instance.getProcessInstanceId();
-        lastPid.set(pid);
-        return ResponseEntity.ok(new ProcessStartResponse(pid, instance.getProcessDefinitionKey()));
+    public ResponseEntity<ProcessStartResponse> startProcess(
+            @RequestParam("processId") String processId,
+            @RequestParam("userId") String userId
+    ) {
+        ProcessInstance instance = runtimeService.startProcessInstanceByKey(processId, Map.of("userId", userId));
+        log.info("[Process Started] userId={} pid={}", userId, instance.getProcessInstanceId());
+
+        return ResponseEntity.ok(
+                new ProcessStartResponse(instance.getProcessInstanceId(), instance.getProcessDefinitionKey())
+        );
     }
 
-    @GetMapping("/status")
-    public ResponseEntity<?> getStatus(@RequestParam("pid") String pid) {
-        HistoricProcessInstance instance = historyService
-                .createHistoricProcessInstanceQuery()
-                .processInstanceId(pid)
-                .singleResult();
+    @GetMapping("/by-user")
+    public ResponseEntity<List<String>> getProcessesByUser(@RequestParam("userId") String userId) {
+        List<ProcessInstance> instances = runtimeService.createProcessInstanceQuery()
+                .variableValueEquals("userId", userId)
+                .active()
+                .list();
 
-        if (instance == null) {
-            return ResponseEntity.status(404).body("Process instance not found");
-        }
+        List<String> pids = instances.stream()
+                .map(ProcessInstance::getProcessInstanceId)
+                .collect(Collectors.toList());
 
-        String status = (instance.getEndTime() == null) ? "ACTIVE_OR_SUSPENDED" : "ENDED";
-        return ResponseEntity.ok(new ProcessStatusResponse(pid, status, instance.getEndTime() != null ? instance.getEndTime().toInstant() : null));
+        return ResponseEntity.ok(pids);
     }
 
-    @GetMapping("/last")
-    public ResponseEntity<Map<String, String>> getLastPid() {
-        String pid = lastPid.get();
-        if (pid == null) {
-            return ResponseEntity.status(404).body(Map.of("error", "No process started yet"));
-        }
-        return ResponseEntity.ok(Map.of("pid", pid));
+    @GetMapping("/tasks")
+    public ResponseEntity<List<Map<String, String>>> getTasksByUser(@RequestParam("userId") String userId) {
+        List<Task> tasks = taskService.createTaskQuery()
+                .processVariableValueEquals("userId", userId)
+                .active()
+                .list();
+
+        List<Map<String, String>> taskSummaries = tasks.stream()
+                .map(task -> Map.of(
+                        "taskId", task.getId(),
+                        "name", task.getName(),
+                        "activityId", task.getTaskDefinitionKey(),
+                        "pid", task.getProcessInstanceId()
+                ))
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(taskSummaries);
     }
+
+
+
+
 }
