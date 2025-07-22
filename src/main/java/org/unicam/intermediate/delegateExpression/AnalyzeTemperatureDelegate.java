@@ -16,8 +16,8 @@ public class AnalyzeTemperatureDelegate implements JavaDelegate {
     @Override
     public void execute(DelegateExecution execution) {
         double temp = (double) execution.getVariable("valore");
-
-        boolean isCritical = temp >= 30.0 && temp < 31.0;
+        boolean isCritical = true;
+        //boolean isCritical = temp >= 30.0 && temp < 31.0;
         execution.setVariable("isCritical", isCritical);
         log.info("isCritical: {}", isCritical);
     }

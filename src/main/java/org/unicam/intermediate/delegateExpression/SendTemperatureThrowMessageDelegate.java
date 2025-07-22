@@ -3,11 +3,9 @@ package org.unicam.intermediate.delegateExpression;
 import org.camunda.bpm.engine.RuntimeService;
 import org.camunda.bpm.engine.delegate.DelegateExecution;
 import org.camunda.bpm.engine.delegate.JavaDelegate;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.unicam.intermediate.config.GlobalEnvironment;
 import org.unicam.intermediate.models.pojo.EnvironmentData;
-import org.unicam.intermediate.models.pojo.Place;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -15,14 +13,14 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.Map;
 
-@Component
-public class SendTemperatureDelegate implements JavaDelegate {
+@Component("sendTemperatureThrowMessageDelegate")
+public class SendTemperatureThrowMessageDelegate implements JavaDelegate {
 
     private final RuntimeService runtimeService;
 
     public final EnvironmentData data = GlobalEnvironment.getInstance().getData();
 
-    public SendTemperatureDelegate(RuntimeService runtimeService) {
+    public SendTemperatureThrowMessageDelegate(RuntimeService runtimeService) {
         this.runtimeService = runtimeService;
     }
 
@@ -59,7 +57,12 @@ public class SendTemperatureDelegate implements JavaDelegate {
             e.printStackTrace();
         }
 
+        runtimeService
+                .createMessageCorrelation("Message_Temperature")
+                .processInstanceBusinessKey("manda-temperatura")
+                .setVariable("valore", 30.4)
+                .correlate();
+
         //double temperature = Math.round((29.0 + (Math.random() * 3.0)) * 10.0) / 10.0;
-        runtimeService.startProcessInstanceByMessage("Message_Temperature", Map.of("valore", 30.4));
     }
 }
