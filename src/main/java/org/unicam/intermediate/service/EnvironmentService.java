@@ -1,26 +1,30 @@
-package org.unicam.intermediate.config;
+package org.unicam.intermediate.service;
+
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.AllArgsConstructor;
 import org.camunda.bpm.engine.RepositoryService;
 import org.camunda.bpm.engine.repository.Deployment;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.ApplicationArguments;
-import org.springframework.boot.ApplicationRunner;
-import org.springframework.stereotype.Component;
+import org.springframework.stereotype.Service;
+import org.unicam.intermediate.config.GlobalEnvironment;
 import org.unicam.intermediate.models.pojo.EnvironmentData;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
 
-@Component
-public class EnvironmentLoader implements ApplicationRunner {
+@Service
+@AllArgsConstructor
+public class EnvironmentService {
 
-    @Autowired
-    private RepositoryService repositoryService;
+    private final RepositoryService repositoryService;
 
-    @Override
-    public void run(ApplicationArguments args) throws Exception {
-        List<Deployment> deployments = repositoryService.createDeploymentQuery().orderByDeploymentName().desc().list();
+    public void reloadFromLatestDeployment() {
+        List<Deployment> deployments = repositoryService
+            .createDeploymentQuery()
+            .orderByDeploymentTime().desc()
+            .list();
 
         for (Deployment deployment : deployments) {
             List<String> resources = repositoryService.getDeploymentResourceNames(deployment.getId());
@@ -30,8 +34,10 @@ public class EnvironmentLoader implements ApplicationRunner {
                         ObjectMapper mapper = new ObjectMapper();
                         EnvironmentData environment = mapper.readValue(is, EnvironmentData.class);
                         GlobalEnvironment.getInstance().setData(environment);
-                        System.out.println("Environment loaded with " + environment.getPlaces().size() + " places.");
+                        System.out.println("Environment ricaricato da deployment " + deployment.getName());
                         return;
+                    } catch (IOException e) {
+                        throw new RuntimeException("Errore nella lettura di environment.json", e);
                     }
                 }
             }

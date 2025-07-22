@@ -1,8 +1,13 @@
 package org.unicam.intermediate.config;
 
+import lombok.Getter;
+import lombok.Setter;
 import org.unicam.intermediate.models.pojo.EnvironmentData;
 
+@Getter
+@Setter
 public class GlobalEnvironment {
+
     private static final GlobalEnvironment INSTANCE = new GlobalEnvironment();
     private EnvironmentData data;
 
@@ -12,11 +17,4 @@ public class GlobalEnvironment {
         return INSTANCE;
     }
 
-    public EnvironmentData getData() {
-        return data;
-    }
-
-    public void setData(EnvironmentData data) {
-        this.data = data;
-    }
 }
