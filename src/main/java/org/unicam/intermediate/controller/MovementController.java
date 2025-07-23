@@ -71,6 +71,7 @@ public class MovementController {
 
                 if (!hasMovementTask) continue;
 
+                // Qui c'è da rivedere sicuramente
                 Collection<Process> processes = model.getModelElementsByType(Process.class);
                 for (Process process : processes) {
                     boolean authorized = false;
@@ -98,7 +99,6 @@ public class MovementController {
                     }
 
                     if (!authorized) {
-                        log.info("[GPS] Unauthorized user: {}", userId);
                         continue;
                     }
 
