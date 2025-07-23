@@ -1,68 +1,94 @@
 package org.unicam.intermediate.delegateExpression;
 
+import lombok.AllArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.camunda.bpm.engine.RuntimeService;
+import org.camunda.bpm.engine.delegate.BpmnError;
 import org.camunda.bpm.engine.delegate.DelegateExecution;
 import org.camunda.bpm.engine.delegate.JavaDelegate;
 import org.springframework.stereotype.Component;
 import org.unicam.intermediate.config.GlobalEnvironment;
 import org.unicam.intermediate.models.pojo.EnvironmentData;
+import org.unicam.intermediate.models.pojo.Place;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @Component("sendTemperatureThrowMessageDelegate")
+@AllArgsConstructor
+@Slf4j
 public class SendTemperatureThrowMessageDelegate implements JavaDelegate {
 
     private final RuntimeService runtimeService;
 
-    public final EnvironmentData data = GlobalEnvironment.getInstance().getData();
-
-    public SendTemperatureThrowMessageDelegate(RuntimeService runtimeService) {
-        this.runtimeService = runtimeService;
-    }
-
     @Override
     public void execute(DelegateExecution execution) {
+        EnvironmentData data = GlobalEnvironment.getInstance().getData();
+        Map<String, Double> temperatureMap = new HashMap<>();
 
         try {
-            String endpoint = "http://www.randomnumberapi.com/api/v1.0/random?min=27&max=32&count=1";
-            URL url = new URL(endpoint);
-            HttpURLConnection con = (HttpURLConnection) url.openConnection();
-            con.setRequestMethod("GET");
-
-            int status = con.getResponseCode();
-            if (status == 200) {
-                BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()));
-                StringBuilder content = new StringBuilder();
-                String inputLine;
-                while ((inputLine = in.readLine()) != null) {
-                    content.append(inputLine);
+            List<Place> places = data.getPlaces();
+            for (Place place : places) {
+                Map<String, Object> attributes = place.getAttributes();
+                if (attributes == null || !attributes.containsKey("temperature")) {
+                    continue;
                 }
-                in.close();
-                con.disconnect();
 
-                // La risposta è un array JSON, es: [28]
-                String response = content.toString();
-                response = response.replaceAll("[\\[\\]]", ""); // rimuove le parentesi
-                int temperature = Integer.parseInt(response.trim());
+                Object rawEndpoint = attributes.get("temperature");
+                if (!(rawEndpoint instanceof String endpoint) || endpoint.isBlank()) {
+                    log.warn("[SendTemperature] Invalid or empty endpoint for place '{}'", place.getId());
+                    continue;
+                }
 
-                System.out.println("Temperatura simulata: " + temperature + " °C");
-            } else {
-                System.err.println("Errore nella richiesta: HTTP " + status);
+                try {
+                    double temperature = fetchTemperatureFromEndpoint(endpoint);
+                    temperatureMap.put(place.getId(), temperature);
+                    log.info("[SendTemperature] Retrieved temperature {}°C for place '{}'", temperature, place.getId());
+                } catch (Exception e) {
+                    log.warn("[SendTemperature] Failed to fetch temperature for '{}': {}", place.getId(), e.getMessage());
+                }
             }
+String businessKey = execution.getBusinessKey();
+
+            // Correlate message with the temperature map
+            runtimeService
+                    .createMessageCorrelation("Message_Temperature")
+                    .processInstanceBusinessKey(businessKey)
+                    .setVariable("temperatureMap", temperatureMap)
+                    .correlate();
+
+            log.info("[SendTemperature] Message_Temperature correlated with {} entries.", temperatureMap.size());
+
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("[SendTemperature] Unexpected error: {}", e.getMessage(), e);
+            throw new BpmnError("SendTemperatureError", "Unexpected error during temperature collection");
+        }
+    }
+
+    private double fetchTemperatureFromEndpoint(String endpoint) throws Exception {
+        URL url = new URL(endpoint);
+        HttpURLConnection con = (HttpURLConnection) url.openConnection();
+        con.setRequestMethod("GET");
+
+        int status = con.getResponseCode();
+        if (status != 200) {
+            throw new IllegalStateException("HTTP status " + status);
         }
 
-        runtimeService
-                .createMessageCorrelation("Message_Temperature")
-                .processInstanceBusinessKey("manda-temperatura")
-                .setVariable("valore", 30.4)
-                .correlate();
+        try (BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()))) {
+            StringBuilder content = new StringBuilder();
+            String inputLine;
+            while ((inputLine = in.readLine()) != null) {
+                content.append(inputLine);
+            }
 
-        //double temperature = Math.round((29.0 + (Math.random() * 3.0)) * 10.0) / 10.0;
+            String response = content.toString().replaceAll("[\\[\\]]", "").trim();
+            return Double.parseDouble(response);
+        }
     }
 }

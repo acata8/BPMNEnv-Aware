@@ -1,13 +1,10 @@
 package org.unicam.intermediate.delegateExpression;
 
 import lombok.extern.slf4j.Slf4j;
-import org.camunda.bpm.engine.RuntimeService;
+import org.camunda.bpm.engine.delegate.BpmnError;
 import org.camunda.bpm.engine.delegate.DelegateExecution;
 import org.camunda.bpm.engine.delegate.JavaDelegate;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
-
-import java.util.Map;
 
 @Component
 @Slf4j
@@ -15,10 +12,24 @@ public class AnalyzeTemperatureDelegate implements JavaDelegate {
 
     @Override
     public void execute(DelegateExecution execution) {
-        double temp = (double) execution.getVariable("valore");
-        boolean isCritical = true;
-        //boolean isCritical = temp >= 30.0 && temp < 31.0;
-        execution.setVariable("isCritical", isCritical);
-        log.info("isCritical: {}", isCritical);
+        try {
+            Object rawValue = execution.getVariable("valore");
+
+            if (!(rawValue instanceof Number)) {
+                log.warn("[AnalyzeTemperature] Variable 'valore' is missing or not numeric");
+                execution.setVariable("isCritical", false);
+                return;
+            }
+
+            double temp = ((Number) rawValue).doubleValue();
+            boolean isCritical = temp >= 30.0 && temp < 31.0;
+
+            execution.setVariable("isCritical", isCritical);
+            log.info("[AnalyzeTemperature] Read temperature: {}. isCritical: {}", temp, isCritical);
+
+        } catch (Exception e) {
+            log.error("[AnalyzeTemperature] Unexpected error: {}", e.getMessage(), e);
+            throw new BpmnError("AnalyzeTemperatureError", "Internal error while analyzing temperature value");
+        }
     }
 }

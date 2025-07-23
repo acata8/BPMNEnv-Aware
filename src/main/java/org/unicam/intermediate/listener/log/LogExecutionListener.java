@@ -9,18 +9,25 @@ public class LogExecutionListener implements ExecutionListener {
 
     @Override
     public void notify(DelegateExecution execution) {
-        String eventName = execution.getEventName();
-        String activityId = execution.getCurrentActivityId();
-        String activityName = execution.getCurrentActivityName();
-        String instanceId = execution.getProcessInstanceId();
+        try {
+            String eventName = execution.getEventName();
+            String activityId = execution.getCurrentActivityId();
+            String activityName = execution.getCurrentActivityName();
+            String instanceId = execution.getProcessInstanceId();
 
-        String logMessage = "";
-        if (ExecutionListener.EVENTNAME_START.equals(eventName)) {
-            logMessage = "TASK STARTED Activity: " + activityId + " - " + activityName + " | Instance: " + instanceId;
-        } else if (ExecutionListener.EVENTNAME_END.equals(eventName)) {
-            logMessage = "TASK ENDED Activity: " + activityId + " - " + activityName + " | Instance: " + instanceId;
+            activityId = activityId != null ? activityId : "(unknown)";
+            activityName = activityName != null ? activityName : "(unnamed)";
+
+            if (ExecutionListener.EVENTNAME_START.equals(eventName)) {
+                log.info("[LogExecutionListener] TASK STARTED | Activity: {} - {} | Instance: {}",
+                        activityId, activityName, instanceId);
+            } else if (ExecutionListener.EVENTNAME_END.equals(eventName)) {
+                log.info("[LogExecutionListener] TASK ENDED | Activity: {} - {} | Instance: {}",
+                        activityId, activityName, instanceId);
+            }
+
+        } catch (Exception e) {
+            log.error("[LogExecutionListener] Error while logging execution event: {}", e.getMessage(), e);
         }
-        log.info(logMessage);
-
     }
 }
