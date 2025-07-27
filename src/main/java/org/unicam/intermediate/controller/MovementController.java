@@ -2,16 +2,9 @@ package org.unicam.intermediate.controller;
 
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.camunda.bpm.engine.IdentityService;
 import org.camunda.bpm.engine.RepositoryService;
 import org.camunda.bpm.engine.RuntimeService;
-import org.camunda.bpm.engine.identity.Group;
-import org.camunda.bpm.engine.repository.ProcessDefinition;
 import org.camunda.bpm.engine.runtime.Execution;
-import org.camunda.bpm.model.bpmn.BpmnModelInstance;
-import org.camunda.bpm.model.bpmn.instance.ExtensionElements;
-import org.camunda.bpm.model.bpmn.instance.Process;
-import org.camunda.bpm.model.bpmn.instance.Task;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -19,10 +12,15 @@ import org.unicam.intermediate.config.GlobalEnvironment;
 import org.unicam.intermediate.models.pojo.Place;
 import org.unicam.intermediate.models.dto.MovementResponse;
 import org.unicam.intermediate.models.dto.Response;
+import org.unicam.intermediate.service.MovementService;
 import org.unicam.intermediate.service.ParticipantPositionService;
+import org.unicam.intermediate.service.xml.AbstractXmlService;
+import org.unicam.intermediate.service.xml.XmlServiceDispatcher;
 
-import java.util.*;
-import java.util.stream.Collectors;
+import java.util.List;
+import java.util.Optional;
+
+import static org.unicam.intermediate.utils.Constants.SPACE_NS;
 
 @RestController
 @RequestMapping("/api/movement")
@@ -32,8 +30,9 @@ public class MovementController {
 
     private final RuntimeService runtimeService;
     private final RepositoryService repositoryService;
+    private final MovementService movementService;
     private final ParticipantPositionService positionService;
-    private final IdentityService identityService;
+    private final XmlServiceDispatcher xmlServiceDispatcher;
 
     @PostMapping("/gps")
     public ResponseEntity<Response<MovementResponse>> receiveGpsByUser(
@@ -41,105 +40,93 @@ public class MovementController {
             @RequestParam("lat") double lat,
             @RequestParam("lon") double lon
     ) {
+        if (userId == null || userId.isBlank()) {
+            return ResponseEntity.badRequest()
+                    .body(Response.error("Missing or invalid userId"));
+        }
+
         try {
-            if (userId == null || userId.isBlank()) {
-                return ResponseEntity.badRequest().body(
-                        Response.error("Missing or invalid userId")
-                );
-            }
+            // 1) tutte le process definition attive
+            var definitions = repositoryService
+                    .createProcessDefinitionQuery()
+                    .active()
+                    .list();
 
-            List<ProcessDefinition> definitions = repositoryService.createProcessDefinitionQuery().active().list();
+            for (var def : definitions) {
+                // 2) prendo tutti i task movement per questa definition
+                List<String> movementTaskIds = movementService.getMovementTasks(def);
+                if (movementTaskIds.isEmpty()) {
+                    continue;
+                }
 
-            for (ProcessDefinition def : definitions) {
-                BpmnModelInstance model = repositoryService.getBpmnModelInstance(def.getId());
-                if (model == null) continue;
+                // 3) ottengo le Execution attive su quei task *autorizzate per userId*
+                List<Execution> executions = movementService
+                        .findActiveExecutionsForActivities(def.getId(), movementTaskIds, userId);
 
-                boolean hasMovementTask = model.getModelElementsByType(Task.class)
-                        .stream()
-                        .anyMatch(task -> {
-                            ExtensionElements ext = task.getExtensionElements();
-                            if (ext == null) return false;
-
-                            return ext.getElementsQuery()
-                                    .list()
-                                    .stream()
-                                    .anyMatch(el ->
-                                            "type".equals(el.getDomElement().getLocalName()) &&
-                                                    "movement".equals(el.getDomElement().getTextContent())
-                                    );
-                        });
-
-                if (!hasMovementTask) continue;
-
-                // Qui c'è da rivedere sicuramente
-                Collection<Process> processes = model.getModelElementsByType(Process.class);
-                for (Process process : processes) {
-                    boolean authorized = true;
-
-                    String candidateUsers = process.getCamundaCandidateStarterUsers();
-                    String candidateGroups = process.getCamundaCandidateStarterGroups();
-
-                    if (candidateUsers != null) {
-                        authorized = Arrays.stream(candidateUsers.split(","))
-                                .anyMatch(u -> u.trim().equalsIgnoreCase(userId));
+                // 4) per ogni execution, leggo la variabile dinamica taskId.localName
+                for (Execution exe : executions) {
+                    // (a) recupero l'activityId vero dalla execution
+                    List<String> activeIds = runtimeService
+                            .getActiveActivityIds(exe.getId());
+                    if (activeIds.isEmpty()) {
+                        continue;
                     }
+                    String taskId = activeIds.get(0);
 
-                    if (!authorized && candidateGroups != null) {
-                        List<Group> userGroups = identityService.createGroupQuery()
-                                .groupMember(userId)
-                                .list();
+                    // (b) prendo il servizio basato su space:type ("movement")
+                    AbstractXmlService xmlSvc = xmlServiceDispatcher
+                            .get(SPACE_NS.getNamespaceUri(),
+                                    xmlServiceDispatcher
+                                            .get(SPACE_NS.getNamespaceUri(), "movement")
+                                            .getTypeKey());
 
-                        Set<String> userGroupIds = userGroups.stream()
-                                .map(Group::getId)
-                                .collect(Collectors.toSet());
+                    // (c) costruisco la chiave dinamica: "Activity_0c0m8b5.destination"
+                    String varKey = taskId + "." + xmlSvc.getLocalName();
+                    String destinationKey = (String)
+                            runtimeService.getVariable(exe.getId(), varKey);
 
-                        authorized = Arrays.stream(candidateGroups.split(","))
-                                .map(String::trim)
-                                .anyMatch(userGroupIds::contains);
-                    }
-
-                    if (!authorized) {
+                    if (destinationKey == null) {
+                        log.warn("[GPS] no variable {} on execution {}", varKey, exe.getId());
                         continue;
                     }
 
-                    List<Execution> executions = runtimeService.createExecutionQuery()
-                            .processDefinitionId(def.getId())
-                            .activityId("Move_To_Destination")
-                            .active()
-                            .list();
+                    // (d) verifico se il place esiste e l'utente è entrato nell'area
+                    Optional<Place> placeOpt = GlobalEnvironment.getInstance()
+                            .getData().getPlaces().stream()
+                            .filter(p -> p.getId().equals(destinationKey))
+                            .findFirst();
 
-                    for (Execution execution : executions) {
-                        Object destObj = runtimeService.getVariable(execution.getId(), "destination");
-                        if (destObj == null) continue;
+                    if (placeOpt.isEmpty()) {
+                        continue;
+                    }
+                    Place place = placeOpt.get();
 
-                        String destinationKey = destObj.toString();
+                    if (place.getLocationArea().contains(lat, lon)) {
+                        positionService.updatePosition(userId, lat, lon, destinationKey);
+                        log.info("[GPS] User {} entered area '{}'", userId, destinationKey);
+                        runtimeService.signal(exe.getId());
 
-                        Optional<Place> maybePlace = GlobalEnvironment.getInstance()
-                                .getData()
-                                .getPlaces()
-                                .stream()
-                                .filter(p -> p.getId().equals(destinationKey))
-                                .findFirst();
-
-                        if (maybePlace.isEmpty()) continue;
-
-                        Place place = maybePlace.get();
-
-                        if (place.getLocationArea().contains(lat, lon)) {
-                            positionService.updatePosition(userId, lat, lon, destinationKey);
-                            runtimeService.signal(execution.getId());
-                            log.info("[GPS] User {} entered area '{}'", userId, destinationKey);
-                            MovementResponse response = new MovementResponse(true, "Device is inside the area", destinationKey, userId, null);
-                            return ResponseEntity.ok(Response.ok(response));
-                        }
+                        MovementResponse resp = new MovementResponse(
+                                true,
+                                "Device is inside the area",
+                                destinationKey,
+                                userId,
+                                null
+                        );
+                        return ResponseEntity.ok(Response.ok(resp));
                     }
                 }
             }
 
             log.info("[GPS] Device NOT in area for user {}", userId);
-            return ResponseEntity.ok(Response.ok(
-                    new MovementResponse(false, "Device is NOT inside the area", null, userId, null)
-            ));
+            MovementResponse resp = new MovementResponse(
+                    false,
+                    "Device is NOT inside the area",
+                    null,
+                    userId,
+                    null
+            );
+            return ResponseEntity.ok(Response.ok(resp));
 
         } catch (Exception ex) {
             log.error("[GPS ERROR] Exception while processing GPS data", ex);

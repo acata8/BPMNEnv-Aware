@@ -10,7 +10,10 @@ import org.camunda.bpm.model.xml.instance.DomElement;
 import org.camunda.bpm.model.xml.instance.ModelElementInstance;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import org.unicam.intermediate.service.xml.AbstractXmlService;
 import org.unicam.intermediate.service.xml.XmlServiceDispatcher;
+
+import static org.unicam.intermediate.utils.Constants.SPACE_NS;
 
 @Slf4j
 @Component("movementExecutionListener")
@@ -21,46 +24,23 @@ public class MovementExecutionListener implements ExecutionListener {
     public MovementExecutionListener(XmlServiceDispatcher dispatcher) {
         this.dispatcher = dispatcher;
     }
-
     @Override
     public void notify(DelegateExecution execution) {
+        AbstractXmlService svc = dispatcher.get(SPACE_NS.getNamespaceUri(), "movement");
+        String raw = svc.extractRaw(execution);
+        String value = raw != null && raw.startsWith("${") && raw.endsWith("}")
+                ? String.valueOf(execution.getVariable(raw.substring(2, raw.length()-1).trim()))
+                : raw;
 
-        ExtensionElements ext = execution.getBpmnModelElementInstance()
-                .getExtensionElements();
+        if (EVENTNAME_START.equals(execution.getEventName())) {
+            svc.patchInstanceValue(execution, value);
 
-        if (ext == null) {
-            return;
+            var activityId = execution.getCurrentActivityId();
+            String varKey = activityId + "." + svc.getLocalName();
+            execution.setVariable(varKey, value);
         }
-
-        String spaceType = ext.getDomElement().getChildElements().stream()
-                .filter(d -> "type".equals(d.getLocalName()))
-                .findFirst()
-                .map(DomElement::getTextContent)
-                .map(String::trim)
-                .orElse(null);
-        if (spaceType == null) {
-            return;
-        }
-
-        String namespace = "http://space";
-        var service = dispatcher.get(namespace, spaceType);
-        if (service != null) {
-            String raw = service.extractRaw(execution);
-
-            if (raw == null) {
-                log.warn("[Movement] <space:destination> not found");
-                return;
-            }
-
-            String varName = raw;
-            if (raw.startsWith("${") && raw.endsWith("}")) {
-                varName = raw.substring(2, raw.length() - 1).trim();
-            }
-
-            Object value = execution.getVariable(varName);
-            execution.setVariable("destination", value);
-            log.info("[Movement] 'destination' set from <space:destination> with ({} → {})", varName, value);
-            service.updateValue(execution, (String) value);
+        else if (EVENTNAME_END.equals(execution.getEventName())) {
+            svc.restoreInstanceValue(execution, "${destination}");
         }
     }
 }

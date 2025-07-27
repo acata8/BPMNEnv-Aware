@@ -12,19 +12,17 @@ import java.util.stream.Collectors;
  */
 @Component
 public class XmlServiceDispatcher {
-
-    public final Map<String, AbstractXmlService> services;
-
+    private final Map<String,AbstractXmlService> services;
     @Autowired
     public XmlServiceDispatcher(List<AbstractXmlService> svcList) {
         this.services = svcList.stream()
-            .collect(Collectors.toMap(
-                s -> s.namespaceUri + "#" + s.localName,
-                s -> s
-            ));
+                .collect(Collectors.toMap(
+                        s -> s.getNamespaceUri() + "#" + s.getTypeKey(),
+                        s -> s
+                ));
     }
-
-    public AbstractXmlService get(String namespaceUri, String localName) {
-        return services.get(namespaceUri + "#" + localName);
+    public AbstractXmlService get(String namespaceUri, String typeKey) {
+        return services.get(namespaceUri + "#" + typeKey);
     }
 }
+

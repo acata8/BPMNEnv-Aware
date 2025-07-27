@@ -1,18 +1,16 @@
 package org.unicam.intermediate.service.xml;
 
 import lombok.extern.slf4j.Slf4j;
-import org.camunda.bpm.engine.RepositoryService;
 import org.camunda.bpm.engine.delegate.DelegateExecution;
-import org.camunda.bpm.model.bpmn.BpmnModelInstance;
+import org.camunda.bpm.engine.RepositoryService;
 import org.camunda.bpm.model.bpmn.instance.ExtensionElements;
 import org.camunda.bpm.model.bpmn.instance.Task;
 import org.camunda.bpm.model.xml.instance.DomElement;
 import org.camunda.bpm.model.xml.instance.ModelElementInstance;
 import org.springframework.beans.factory.annotation.Autowired;
 
-/**
- * Super‐classe generica per leggere/scrivere un tag <ns:tagName> in extensionElements.
- */
+import java.util.Optional;
+
 @Slf4j
 public abstract class AbstractXmlService {
 
@@ -29,54 +27,60 @@ public abstract class AbstractXmlService {
         this.namespaceUri = namespaceUri;
     }
 
-    /**
-     * Estrae il contenuto raw di <ns:localName> da extensionElements.
-     * @return testo (trimmed) o null
-     */
+    /** Chiave usata per il dispatch (es. "movement") */
+    public abstract String getTypeKey();
+    public abstract String getNamespaceUri();
+    public abstract String getLocalName();
+
+
     public String extractRaw(DelegateExecution execution) {
         ModelElementInstance elem = execution.getBpmnModelElementInstance();
-        if (!(elem instanceof Task task)) {
-            return null;
-        }
+        if (!(elem instanceof Task task)) return null;
         ExtensionElements ext = task.getExtensionElements();
-        if (ext == null) {
-            return null;
-        }
-        for (DomElement dom : ext.getDomElement().getChildElements()) {
-            if (localName.equals(dom.getLocalName()) &&
-                    namespaceUri.equals(dom.getNamespaceURI())) {
-                String txt = dom.getTextContent();
-                return (txt != null ? txt.trim() : null);
-            }
-        }
-        return null;
+        if (ext == null) return null;
+        return ext.getDomElement().getChildElements().stream()
+                .filter(dom -> localName.equals(dom.getLocalName())
+                        && namespaceUri.equals(dom.getNamespaceURI()))
+                .map(DomElement::getTextContent)
+                .map(String::trim)
+                .findFirst()
+                .orElse(null);
     }
 
-    /**
-     * Scrive newValue in ogni <ns:localName> esistente in extensionElements.
-     */
-    public void updateValue(DelegateExecution execution, String newValue) {
-        String defId = execution.getProcessDefinitionId();
-        BpmnModelInstance model = repositoryService.getBpmnModelInstance(defId);
+    public void patchInstanceValue(DelegateExecution execution, String newValue) {
+        doUpdateOnInstance(execution, newValue);
+        log.debug("[XMLService] patched <{}>='{}' on {}", localName, newValue, execution.getCurrentActivityId());
+    }
 
-        ModelElementInstance elem = model.getModelElementById(execution.getCurrentActivityId());
-        if (!(elem instanceof Task task)) {
-            log.warn("[XMLService] L’elemento {} non è un Task", execution.getCurrentActivityId());
-            return;
-        }
 
+    public void restoreInstanceValue(DelegateExecution execution, String rawValue) {
+        doUpdateOnInstance(execution, rawValue);
+        log.debug("[XMLService] restored <{}>='{}' on {}", localName, rawValue, execution.getCurrentActivityId());
+    }
+
+    public String readInstanceValue(DelegateExecution execution) {
+        ModelElementInstance elem = execution.getBpmnModelElementInstance();
+        if (!(elem instanceof Task task)) return null;
         ExtensionElements ext = task.getExtensionElements();
-        if (ext == null) {
-            log.warn("[XMLService] Nessuna ExtensionElements su Task {}", execution.getCurrentActivityId());
-            return;
-        }
+        if (ext == null) return null;
+        return ext.getDomElement().getChildElements().stream()
+                .filter(dom -> localName.equals(dom.getLocalName())
+                        && namespaceUri.equals(dom.getNamespaceURI()))
+                .map(DomElement::getTextContent)
+                .map(String::trim)
+                .findFirst()
+                .orElse(null);
+    }
 
+
+    private void doUpdateOnInstance(DelegateExecution execution, String value) {
+        ModelElementInstance elem = execution.getBpmnModelElementInstance();
+        if (!(elem instanceof Task task)) return;
+        ExtensionElements ext = task.getExtensionElements();
+        if (ext == null) return;
         ext.getDomElement().getChildElements().stream()
                 .filter(dom -> localName.equals(dom.getLocalName())
                         && namespaceUri.equals(dom.getNamespaceURI()))
-                .forEach(dom -> {
-                    dom.setTextContent(newValue);
-                    log.info("[XMLService] <{} xmlns='{}'> aggiornato con: {}", localName, namespaceUri, newValue);
-                });
+                .forEach(dom -> dom.setTextContent(value));
     }
 }

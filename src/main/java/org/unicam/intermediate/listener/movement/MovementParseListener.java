@@ -12,13 +12,17 @@ import org.camunda.bpm.engine.impl.util.xml.Namespace;
 import org.springframework.stereotype.Component;
 import org.unicam.intermediate.activity.WaitStateActivity;
 import org.unicam.intermediate.service.xml.XmlServiceDispatcher;
+import org.unicam.intermediate.utils.Constants;
+
+
+import static org.unicam.intermediate.utils.Constants.SPACE_NS;
 
 import java.util.Collections;
 
 @Component
 public class MovementParseListener extends AbstractBpmnParseListener {
 
-    private static final Namespace SPACE_NAMESPACE = new Namespace("space", "http://space");
+
 
     @Override
     public void parseTask(Element taskElement, ScopeImpl scope, ActivityImpl activity) {
@@ -34,10 +38,11 @@ public class MovementParseListener extends AbstractBpmnParseListener {
         var expression = exprMgr.createExpression(exprString);
 
         if (extensions != null) {
-            Element typeElement = extensions.elementNS(SPACE_NAMESPACE, "type");
+            Element typeElement = extensions.elementNS(SPACE_NS, "type");
             if (typeElement != null && "movement".equals(typeElement.getText())) {
                 activity.setActivityBehavior(new WaitStateActivity());
                 activity.addListener(ExecutionListener.EVENTNAME_START, new DelegateExpressionExecutionListener(expression, Collections.emptyList()));
+                activity.addListener(ExecutionListener.EVENTNAME_END, new DelegateExpressionExecutionListener(expression, Collections.emptyList()));
             }
         }
     }
