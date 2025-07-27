@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 import org.unicam.intermediate.config.GlobalEnvironment;
 import org.unicam.intermediate.models.pojo.EnvironmentData;
 import org.unicam.intermediate.models.pojo.Place;
+import org.unicam.intermediate.service.TemperatureService.TemperatureService;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -46,7 +47,7 @@ public class SendTemperatureThrowMessageDelegate implements JavaDelegate {
                 }
 
                 try {
-                    double temperature = fetchTemperatureFromEndpoint(endpoint);
+                    double temperature = new TemperatureService().fetchTemperatureFromEndpoint(endpoint);
                     temperatureMap.put(place.getId(), temperature);
                     log.info("[SendTemperature] Retrieved temperature {}°C for place '{}'", temperature, place.getId());
                 } catch (Exception e) {
@@ -70,25 +71,5 @@ String businessKey = execution.getBusinessKey();
         }
     }
 
-    private double fetchTemperatureFromEndpoint(String endpoint) throws Exception {
-        URL url = new URL(endpoint);
-        HttpURLConnection con = (HttpURLConnection) url.openConnection();
-        con.setRequestMethod("GET");
 
-        int status = con.getResponseCode();
-        if (status != 200) {
-            throw new IllegalStateException("HTTP status " + status);
-        }
-
-        try (BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()))) {
-            StringBuilder content = new StringBuilder();
-            String inputLine;
-            while ((inputLine = in.readLine()) != null) {
-                content.append(inputLine);
-            }
-
-            String response = content.toString().replaceAll("[\\[\\]]", "").trim();
-            return Double.parseDouble(response);
-        }
-    }
 }

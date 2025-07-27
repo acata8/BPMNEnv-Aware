@@ -1,58 +1,66 @@
 package org.unicam.intermediate.listener.movement;
 
+import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.camunda.bpm.engine.delegate.DelegateExecution;
 import org.camunda.bpm.engine.delegate.ExecutionListener;
 import org.camunda.bpm.model.bpmn.instance.ExtensionElements;
 import org.camunda.bpm.model.bpmn.instance.Task;
-import org.camunda.bpm.model.xml.instance.ModelElementInstance;
 import org.camunda.bpm.model.xml.instance.DomElement;
+import org.camunda.bpm.model.xml.instance.ModelElementInstance;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import org.unicam.intermediate.service.xml.XmlServiceDispatcher;
 
-@Component
 @Slf4j
+@Component("movementExecutionListener")
 public class MovementExecutionListener implements ExecutionListener {
+
+    private final XmlServiceDispatcher dispatcher;
+
+    public MovementExecutionListener(XmlServiceDispatcher dispatcher) {
+        this.dispatcher = dispatcher;
+    }
 
     @Override
     public void notify(DelegateExecution execution) {
-        Object existing = execution.getVariable("destination");
-        if (existing != null) {
-            log.info("[MovementExecutionListener] destination already set to '{}'", existing);
+
+        ExtensionElements ext = execution.getBpmnModelElementInstance()
+                .getExtensionElements();
+
+        if (ext == null) {
             return;
         }
 
-        String fromExtension = extractDestinationFromModel(execution);
-        if (fromExtension != null) {
-            execution.setVariable("destination", fromExtension);
-            log.info("[MovementExecutionListener] destination set from <space:destination>: '{}'", fromExtension);
-        } else {
-            String fallback = execution.getCurrentActivityId();
-            execution.setVariable("destination", fallback);
-            log.info("[MovementExecutionListener] destination not defined, using fallback '{}'", fallback);
+        String spaceType = ext.getDomElement().getChildElements().stream()
+                .filter(d -> "type".equals(d.getLocalName()))
+                .findFirst()
+                .map(DomElement::getTextContent)
+                .map(String::trim)
+                .orElse(null);
+        if (spaceType == null) {
+            return;
         }
-    }
 
-    private String extractDestinationFromModel(DelegateExecution execution) {
-        try {
-            ModelElementInstance modelElement = execution.getBpmnModelElementInstance();
-            if (modelElement == null) return null;
+        String namespace = "http://space";
+        var service = dispatcher.get(namespace, spaceType);
+        if (service != null) {
+            String raw = service.extractRaw(execution);
 
-            if (!(modelElement instanceof Task)) return null;
-
-            ExtensionElements extensionElements = ((Task) modelElement).getExtensionElements();
-            if (extensionElements == null) return null;
-
-            for (DomElement domElement : extensionElements.getDomElement().getChildElements()) {
-                if ("destination".equals(domElement.getLocalName())
-                        && "http://space".equals(domElement.getNamespaceURI())) {
-                    String value = domElement.getTextContent();
-                    return (value != null && !value.isBlank()) ? value.trim() : null;
-                }
+            if (raw == null) {
+                log.warn("[Movement] <space:destination> not found");
+                return;
             }
 
-        } catch (Exception e) {
-            log.warn("[MovementExecutionListener] Failed to extract <space:destination>: {}", e.getMessage(), e);
+            String varName = raw;
+            if (raw.startsWith("${") && raw.endsWith("}")) {
+                varName = raw.substring(2, raw.length() - 1).trim();
+            }
+
+            Object value = execution.getVariable(varName);
+            execution.setVariable("destination", value);
+            log.info("[Movement] 'destination' set from <space:destination> with ({} → {})", varName, value);
+            service.updateValue(execution, (String) value);
         }
-        return null;
     }
 }

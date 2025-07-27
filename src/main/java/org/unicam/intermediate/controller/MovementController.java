@@ -74,7 +74,7 @@ public class MovementController {
                 // Qui c'è da rivedere sicuramente
                 Collection<Process> processes = model.getModelElementsByType(Process.class);
                 for (Process process : processes) {
-                    boolean authorized = false;
+                    boolean authorized = true;
 
                     String candidateUsers = process.getCamundaCandidateStarterUsers();
                     String candidateGroups = process.getCamundaCandidateStarterGroups();
