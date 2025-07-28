@@ -1,14 +1,8 @@
 package org.unicam.intermediate.listener.movement;
 
-import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.camunda.bpm.engine.delegate.DelegateExecution;
 import org.camunda.bpm.engine.delegate.ExecutionListener;
-import org.camunda.bpm.model.bpmn.instance.ExtensionElements;
-import org.camunda.bpm.model.bpmn.instance.Task;
-import org.camunda.bpm.model.xml.instance.DomElement;
-import org.camunda.bpm.model.xml.instance.ModelElementInstance;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.unicam.intermediate.service.xml.AbstractXmlService;
 import org.unicam.intermediate.service.xml.XmlServiceDispatcher;
