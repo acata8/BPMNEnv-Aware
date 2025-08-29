@@ -6,7 +6,7 @@ import org.camunda.bpm.engine.delegate.BpmnError;
 import org.camunda.bpm.engine.delegate.DelegateExecution;
 import org.camunda.bpm.engine.delegate.JavaDelegate;
 import org.springframework.stereotype.Component;
-import org.unicam.intermediate.service.EnvironmentService;
+import org.unicam.intermediate.service.environmental.EnvironmentService;
 
 @Component("loadEnvironmentDelegate")
 @Slf4j

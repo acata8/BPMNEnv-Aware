@@ -1,4 +1,4 @@
-package org.unicam.intermediate.models;
+package org.unicam.intermediate.models.environmental;
 
 import org.unicam.intermediate.models.pojo.EnvironmentData;
 

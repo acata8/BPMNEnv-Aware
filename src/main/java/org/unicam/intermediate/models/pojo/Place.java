@@ -2,7 +2,7 @@ package org.unicam.intermediate.models.pojo;
 
 import lombok.Getter;
 import lombok.Setter;
-import org.unicam.intermediate.models.LocationArea;
+import org.unicam.intermediate.models.environmental.LocationArea;
 
 import java.util.List;
 import java.util.Map;

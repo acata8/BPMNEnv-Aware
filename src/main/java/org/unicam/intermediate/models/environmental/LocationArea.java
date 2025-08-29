@@ -1,4 +1,4 @@
-package org.unicam.intermediate.models;
+package org.unicam.intermediate.models.environmental;
 
 public class LocationArea {
     private double minX, maxX, minY, maxY;
