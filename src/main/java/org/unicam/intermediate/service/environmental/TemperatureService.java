@@ -1,7 +1,9 @@
 package org.unicam.intermediate.service.environmental;
 
+import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.unicam.intermediate.config.GlobalEnvironment;
+import org.springframework.stereotype.Service;
+import org.unicam.intermediate.config.EnvironmentDataService;
 import org.unicam.intermediate.models.pojo.Place;
 
 import java.io.BufferedReader;
@@ -11,8 +13,12 @@ import java.net.URL;
 import java.util.Map;
 import java.util.Optional;
 
+@Service
 @Slf4j
+@AllArgsConstructor
 public class TemperatureService {
+
+    private final EnvironmentDataService environmentDataService;
 
     public double fetchTemperatureFromEndpoint(String endpoint) throws Exception {
         URL url = new URL(endpoint);
@@ -38,8 +44,7 @@ public class TemperatureService {
 
     public double getTemperatureFromPlace(String placeId){
         try {
-            Optional<Place> maybePlace = GlobalEnvironment.getInstance()
-                    .getData()
+            Optional<Place> maybePlace = environmentDataService.getData() // Use service
                     .getPlaces()
                     .stream()
                     .filter(p -> p.getId().equals(placeId))

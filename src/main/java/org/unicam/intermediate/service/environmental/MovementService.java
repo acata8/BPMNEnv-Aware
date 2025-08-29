@@ -14,6 +14,7 @@ import org.camunda.bpm.model.bpmn.instance.Task;
 import org.camunda.bpm.model.bpmn.instance.UserTask;
 import org.camunda.bpm.model.xml.instance.ModelElementInstance;
 import org.springframework.stereotype.Service;
+import org.unicam.intermediate.models.enums.TaskType;
 import org.unicam.intermediate.utils.Constants;
 
 import java.util.ArrayList;
@@ -47,11 +48,11 @@ public class MovementService {
     /**
      * Gets all task IDs that have the specified space:type
      */
-    public List<String> getTasksOfType(ProcessDefinition definition, String taskType) {
+    public List<String> getTasksOfType(ProcessDefinition definition, TaskType taskType) {
         BpmnModelInstance model = repositoryService.getBpmnModelInstance(definition.getId());
 
         return model.getModelElementsByType(Task.class).stream()
-                .filter(task -> hasSpaceTypeValue(task, taskType))
+                .filter(task -> hasSpaceTypeValue(task, taskType.toString()))
                 .map(Task::getId)
                 .collect(Collectors.toList());
     }
@@ -80,7 +81,7 @@ public class MovementService {
      */
     public List<Execution> findActiveExecutionsForTaskType(
             String processDefinitionId,
-            String taskType,
+            TaskType taskType,
             String userId) {
 
         ProcessDefinition definition = repositoryService.createProcessDefinitionQuery()

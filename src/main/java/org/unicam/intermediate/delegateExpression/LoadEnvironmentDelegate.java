@@ -6,6 +6,7 @@ import org.camunda.bpm.engine.delegate.BpmnError;
 import org.camunda.bpm.engine.delegate.DelegateExecution;
 import org.camunda.bpm.engine.delegate.JavaDelegate;
 import org.springframework.stereotype.Component;
+import org.unicam.intermediate.config.EnvironmentDataService;
 import org.unicam.intermediate.service.environmental.EnvironmentService;
 
 @Component("loadEnvironmentDelegate")
@@ -13,16 +14,16 @@ import org.unicam.intermediate.service.environmental.EnvironmentService;
 @AllArgsConstructor
 public class LoadEnvironmentDelegate implements JavaDelegate {
 
-    private final EnvironmentService environmentService;
+    private final EnvironmentDataService environmentDataService;
 
     @Override
     public void execute(DelegateExecution execution) {
         try {
-            environmentService.reloadFromLatestDeployment();
-            log.info("[LoadEnvironment] Environment loaded successfully.");
+            environmentDataService.reloadEnvironment(); // Call reload
+            log.info("[LoadEnvironment] Environment reloaded successfully");
         } catch (Exception e) {
-            log.error("[LoadEnvironment] Failed to load environment: {}", e.getMessage(), e);
-            throw new BpmnError("LoadEnvironmentError", "Failed to load environment from deployment");
+            log.error("[LoadEnvironment] Failed to reload environment: {}", e.getMessage());
+            throw new BpmnError("LoadEnvironmentError", "Failed to reload environment");
         }
     }
 }
