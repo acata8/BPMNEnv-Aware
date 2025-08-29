@@ -2,24 +2,19 @@ package org.unicam.intermediate.service.xml;
 
 import lombok.extern.slf4j.Slf4j;
 import org.camunda.bpm.engine.delegate.DelegateExecution;
-import org.camunda.bpm.engine.RepositoryService;
 import org.camunda.bpm.model.bpmn.instance.ExtensionElements;
 import org.camunda.bpm.model.bpmn.instance.Task;
 import org.camunda.bpm.model.xml.instance.DomElement;
 import org.camunda.bpm.model.xml.instance.ModelElementInstance;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.unicam.intermediate.models.enums.ExtendedElementTaskType;
 import org.unicam.intermediate.models.enums.TaskType;
 
 @Slf4j
 public abstract class AbstractXmlService {
 
-    @Autowired
-    protected RepositoryService repositoryService;
-
     /** il nome locale del tag, es. "destination" */
     protected final ExtendedElementTaskType localName;
-    /** il namespace URI, es. "http://space" */
+    /// il namespace URI, es. "http://space"
     protected final String namespaceUri;
 
     protected AbstractXmlService(ExtendedElementTaskType localName, String namespaceUri) {
@@ -27,7 +22,7 @@ public abstract class AbstractXmlService {
         this.namespaceUri = namespaceUri;
     }
 
-    /** Chiave usata per il dispatch (es. "movement") */
+    /** Dispatcher key (ie. "movement") */
     public abstract TaskType getTypeKey();
     public abstract String getNamespaceUri();
     public abstract ExtendedElementTaskType getLocalName();
