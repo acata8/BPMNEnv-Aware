@@ -30,5 +30,8 @@ public enum TaskType {
         return null;
     }
 
-
+    @Override
+    public String toString() {
+        return xmlValue;
+    }
 }
