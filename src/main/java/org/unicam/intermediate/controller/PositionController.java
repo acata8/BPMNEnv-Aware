@@ -5,9 +5,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import org.unicam.intermediate.models.Coordinate;
+import org.unicam.intermediate.models.environmental.Coordinate;
 import org.unicam.intermediate.models.dto.Response;
-import org.unicam.intermediate.service.ParticipantPositionService;
+import org.unicam.intermediate.service.participant.ParticipantPositionService;
 
 import java.util.Map;
 

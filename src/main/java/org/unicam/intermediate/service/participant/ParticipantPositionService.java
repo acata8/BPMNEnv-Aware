@@ -1,9 +1,8 @@
-package org.unicam.intermediate.service;
+package org.unicam.intermediate.service.participant;
 
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import org.unicam.intermediate.models.Coordinate;
+import org.unicam.intermediate.models.environmental.Coordinate;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;

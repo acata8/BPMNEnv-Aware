@@ -1,4 +1,4 @@
-package org.unicam.intermediate.service;
+package org.unicam.intermediate.service.environmental;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.AllArgsConstructor;

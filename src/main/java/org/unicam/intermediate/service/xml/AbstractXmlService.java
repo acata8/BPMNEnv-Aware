@@ -8,8 +8,8 @@ import org.camunda.bpm.model.bpmn.instance.Task;
 import org.camunda.bpm.model.xml.instance.DomElement;
 import org.camunda.bpm.model.xml.instance.ModelElementInstance;
 import org.springframework.beans.factory.annotation.Autowired;
-
-import java.util.Optional;
+import org.unicam.intermediate.models.enums.ExtendedElementTaskType;
+import org.unicam.intermediate.models.enums.TaskType;
 
 @Slf4j
 public abstract class AbstractXmlService {
@@ -18,19 +18,19 @@ public abstract class AbstractXmlService {
     protected RepositoryService repositoryService;
 
     /** il nome locale del tag, es. "destination" */
-    protected final String localName;
+    protected final ExtendedElementTaskType localName;
     /** il namespace URI, es. "http://space" */
     protected final String namespaceUri;
 
-    protected AbstractXmlService(String localName, String namespaceUri) {
+    protected AbstractXmlService(ExtendedElementTaskType localName, String namespaceUri) {
         this.localName    = localName;
         this.namespaceUri = namespaceUri;
     }
 
     /** Chiave usata per il dispatch (es. "movement") */
-    public abstract String getTypeKey();
+    public abstract TaskType getTypeKey();
     public abstract String getNamespaceUri();
-    public abstract String getLocalName();
+    public abstract ExtendedElementTaskType getLocalName();
 
 
     public String extractRaw(DelegateExecution execution) {
@@ -38,8 +38,11 @@ public abstract class AbstractXmlService {
         if (!(elem instanceof Task task)) return null;
         ExtensionElements ext = task.getExtensionElements();
         if (ext == null) return null;
+
+        var matchingName = localName.toString().toUpperCase();
+
         return ext.getDomElement().getChildElements().stream()
-                .filter(dom -> localName.equals(dom.getLocalName())
+                .filter(dom -> matchingName.equals(dom.getLocalName().toUpperCase())
                         && namespaceUri.equals(dom.getNamespaceURI()))
                 .map(DomElement::getTextContent)
                 .map(String::trim)
@@ -58,28 +61,16 @@ public abstract class AbstractXmlService {
         log.debug("[XMLService] restored <{}>='{}' on {}", localName, rawValue, execution.getCurrentActivityId());
     }
 
-    public String readInstanceValue(DelegateExecution execution) {
-        ModelElementInstance elem = execution.getBpmnModelElementInstance();
-        if (!(elem instanceof Task task)) return null;
-        ExtensionElements ext = task.getExtensionElements();
-        if (ext == null) return null;
-        return ext.getDomElement().getChildElements().stream()
-                .filter(dom -> localName.equals(dom.getLocalName())
-                        && namespaceUri.equals(dom.getNamespaceURI()))
-                .map(DomElement::getTextContent)
-                .map(String::trim)
-                .findFirst()
-                .orElse(null);
-    }
-
-
     private void doUpdateOnInstance(DelegateExecution execution, String value) {
         ModelElementInstance elem = execution.getBpmnModelElementInstance();
         if (!(elem instanceof Task task)) return;
         ExtensionElements ext = task.getExtensionElements();
         if (ext == null) return;
+
+        var matchingName = localName.toString().toUpperCase();
+
         ext.getDomElement().getChildElements().stream()
-                .filter(dom -> localName.equals(dom.getLocalName())
+                .filter(dom -> matchingName.equals(dom.getLocalName().toUpperCase())
                         && namespaceUri.equals(dom.getNamespaceURI()))
                 .forEach(dom -> dom.setTextContent(value));
     }

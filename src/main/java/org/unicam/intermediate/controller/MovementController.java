@@ -9,18 +9,19 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.unicam.intermediate.config.GlobalEnvironment;
+import org.unicam.intermediate.models.enums.TaskType;
 import org.unicam.intermediate.models.pojo.Place;
 import org.unicam.intermediate.models.dto.MovementResponse;
 import org.unicam.intermediate.models.dto.Response;
-import org.unicam.intermediate.service.MovementService;
-import org.unicam.intermediate.service.ParticipantPositionService;
+import org.unicam.intermediate.service.environmental.MovementService;
+import org.unicam.intermediate.service.participant.ParticipantPositionService;
 import org.unicam.intermediate.service.xml.AbstractXmlService;
 import org.unicam.intermediate.service.xml.XmlServiceDispatcher;
+import org.unicam.intermediate.utils.Constants;
 
 import java.util.List;
 import java.util.Optional;
-
-import static org.unicam.intermediate.utils.Constants.SPACE_NS;
+import java.util.concurrent.CompletableFuture;
 
 @RestController
 @RequestMapping("/api/movement")
@@ -46,26 +47,24 @@ public class MovementController {
         }
 
         try {
-            // 1) tutte le process definition attive
+            log.info("[GPS] RECEIVED | User: {} | Coordinates: ({}, {})", userId, lat, lon);
+
             var definitions = repositoryService
                     .createProcessDefinitionQuery()
                     .active()
                     .list();
 
             for (var def : definitions) {
-                // 2) prendo tutti i task movement per questa definition
-                List<String> movementTaskIds = movementService.getMovementTasks(def);
+                // Get all tasks with movement type dynamically
+                List<String> movementTaskIds = movementService.getTasksOfType(def, "movement");
                 if (movementTaskIds.isEmpty()) {
                     continue;
                 }
 
-                // 3) ottengo le Execution attive su quei task *autorizzate per userId*
                 List<Execution> executions = movementService
                         .findActiveExecutionsForActivities(def.getId(), movementTaskIds, userId);
 
-                // 4) per ogni execution, leggo la variabile dinamica taskId.localName
                 for (Execution exe : executions) {
-                    // (a) recupero l'activityId vero dalla execution
                     List<String> activeIds = runtimeService
                             .getActiveActivityIds(exe.getId());
                     if (activeIds.isEmpty()) {
@@ -73,24 +72,18 @@ public class MovementController {
                     }
                     String taskId = activeIds.get(0);
 
-                    // (b) prendo il servizio basato su space:type ("movement")
+                    // Use dynamic XML service dispatch
                     AbstractXmlService xmlSvc = xmlServiceDispatcher
-                            .get(SPACE_NS.getNamespaceUri(),
-                                    xmlServiceDispatcher
-                                            .get(SPACE_NS.getNamespaceUri(), "movement")
-                                            .getTypeKey());
+                            .get(Constants.SPACE_NS.getNamespaceUri(), TaskType.MOVEMENT);
 
-                    // (c) costruisco la chiave dinamica: "Activity_0c0m8b5.destination"
-                    String varKey = taskId + "." + xmlSvc.getLocalName();
-                    String destinationKey = (String)
-                            runtimeService.getVariable(exe.getId(), varKey);
+                    String varKey = taskId + "." + (xmlSvc != null ? xmlSvc.getLocalName() : "destination");
+                    String destinationKey = (String) runtimeService.getVariable(exe.getId(), varKey);
 
                     if (destinationKey == null) {
-                        log.warn("[GPS] no variable {} on execution {}", varKey, exe.getId());
+                        log.warn("[GPS] No destination variable {} on execution {}", varKey, exe.getId());
                         continue;
                     }
 
-                    // (d) verifico se il place esiste e l'utente è entrato nell'area
                     Optional<Place> placeOpt = GlobalEnvironment.getInstance()
                             .getData().getPlaces().stream()
                             .filter(p -> p.getId().equals(destinationKey))
@@ -103,22 +96,39 @@ public class MovementController {
 
                     if (place.getLocationArea().contains(lat, lon)) {
                         positionService.updatePosition(userId, lat, lon, destinationKey);
-                        log.info("[GPS] User {} entered area '{}'", userId, destinationKey);
-                        runtimeService.signal(exe.getId());
+
+                        // Direct GPS logging
+                        log.info("[GPS] ENTERED AREA | User: {} | Coordinates: ({}, {}) | Place: {}",
+                                userId, lat, lon, destinationKey);
 
                         MovementResponse resp = new MovementResponse(
                                 true,
                                 "Device is inside the area",
                                 destinationKey,
                                 userId,
-                                null
+                                exe.getProcessInstanceId()
                         );
+
+                        log.info("[GPS] User {} entered area '{}' - preparing response", userId, destinationKey);
+
+                        CompletableFuture.runAsync(() -> {
+                            try {
+                                Thread.sleep(50);
+                                runtimeService.signal(exe.getId());
+                                log.debug("[GPS] Execution {} signaled successfully", exe.getId());
+                            } catch (InterruptedException e) {
+                                Thread.currentThread().interrupt();
+                                log.error("[GPS] Signaling interrupted for execution {}: {}", exe.getId(), e.getMessage());
+                            } catch (Exception e) {
+                                log.error("[GPS] Error signaling execution {}: {}", exe.getId(), e.getMessage(), e);
+                            }
+                        });
+                        log.info("[GPS] Movement response returning immediately for user {}", userId);
                         return ResponseEntity.ok(Response.ok(resp));
                     }
                 }
             }
-
-            log.info("[GPS] Device NOT in area for user {}", userId);
+            log.info("[GPS] NOT IN AREA | User: {} | Coordinates: ({}, {}) | Place: unknown", userId, lat, lon);
             MovementResponse resp = new MovementResponse(
                     false,
                     "Device is NOT inside the area",
@@ -129,7 +139,7 @@ public class MovementController {
             return ResponseEntity.ok(Response.ok(resp));
 
         } catch (Exception ex) {
-            log.error("[GPS ERROR] Exception while processing GPS data", ex);
+            log.error("[GPS ERROR] Exception while processing GPS data for user: {}", userId, ex);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Response.error("Internal server error: " + ex.getMessage()));
         }

@@ -1,6 +1,8 @@
 package org.unicam.intermediate.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.AllArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.camunda.bpm.engine.RepositoryService;
 import org.camunda.bpm.engine.repository.Deployment;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -13,10 +15,11 @@ import java.io.InputStream;
 import java.util.List;
 
 @Component
+@Slf4j
+@AllArgsConstructor
 public class EnvironmentLoader implements ApplicationRunner {
 
-    @Autowired
-    private RepositoryService repositoryService;
+    private final RepositoryService repositoryService;
 
     @Override
     public void run(ApplicationArguments args) throws Exception {

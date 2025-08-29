@@ -1,4 +1,4 @@
-package org.unicam.intermediate.delegateExpression;
+package org.unicam.intermediate.delegateExpression.old;
 
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -10,12 +10,8 @@ import org.springframework.stereotype.Component;
 import org.unicam.intermediate.config.GlobalEnvironment;
 import org.unicam.intermediate.models.pojo.EnvironmentData;
 import org.unicam.intermediate.models.pojo.Place;
-import org.unicam.intermediate.service.TemperatureService.TemperatureService;
+import org.unicam.intermediate.service.environmental.TemperatureService;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
