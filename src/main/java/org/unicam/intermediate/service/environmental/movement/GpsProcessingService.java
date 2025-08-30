@@ -6,8 +6,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.camunda.bpm.engine.RuntimeService;
 import org.camunda.bpm.engine.runtime.Execution;
 import org.springframework.stereotype.Service;
+import org.unicam.intermediate.models.pojo.Place;
 import org.unicam.intermediate.models.record.MovementResponse;
 import org.unicam.intermediate.models.enums.TaskType;
+import org.unicam.intermediate.models.record.MovementTask;
 import org.unicam.intermediate.service.environmental.EnvironmentDataService;
 import org.unicam.intermediate.service.participant.ParticipantPositionService;
 import org.unicam.intermediate.service.xml.AbstractXmlService;
@@ -53,14 +55,14 @@ public class GpsProcessingService {
 
         // Process each task - return first match
         for (MovementTask task : activeTasks) {
-            if (isLocationMatchingDestination(lat, lon, task.getDestinationId())) {
+            if (isLocationMatchingDestination(lat, lon, task.destinationId())) {
                 return handleLocationMatch(task, userId, lat, lon);
             }
         }
 
         // No matching destinations
         log.info("[GPS Service] User {} not in any target area. Active destinations: {}",
-                userId, activeTasks.stream().map(MovementTask::getDestinationId).toList());
+                userId, activeTasks.stream().map(MovementTask::destinationId).toList());
 
         return MovementResponse.notInTargetArea(userId);
     }
@@ -76,7 +78,7 @@ public class GpsProcessingService {
         List<MovementTask> tasks = findMovementTasksForProcess(processInstanceId, userId);
 
         for (MovementTask task : tasks) {
-            if (isLocationMatchingDestination(lat, lon, task.getDestinationId())) {
+            if (isLocationMatchingDestination(lat, lon, task.destinationId())) {
                 return handleLocationMatch(task, userId, lat, lon);
             }
         }
@@ -96,7 +98,7 @@ public class GpsProcessingService {
      */
     public List<String> getActiveDestinations(String userId) {
         return findActiveMovementTasksForUser(userId).stream()
-                .map(MovementTask::getDestinationId)
+                .map(MovementTask::destinationId)
                 .distinct()
                 .toList();
     }
@@ -106,7 +108,7 @@ public class GpsProcessingService {
     private void updateUserPosition(String userId, double lat, double lon) {
         // Find which place (if any) contains this location
         String currentPlace = environmentDataService.findPlaceContainingLocation(lat, lon)
-                .map(place -> place.getId())
+                .map(Place::getId)
                 .orElse(null);
 
         positionService.updatePosition(userId, lat, lon, currentPlace);
@@ -149,7 +151,7 @@ public class GpsProcessingService {
 
         for (Execution exe : executions) {
             MovementTask task = extractMovementTask(exe);
-            if (task != null && task.getDestinationId() != null) {
+            if (task != null && task.destinationId() != null) {
                 tasks.add(task);
             }
         }
@@ -205,21 +207,15 @@ public class GpsProcessingService {
 
     private MovementResponse handleLocationMatch(MovementTask task, String userId, double lat, double lon) {
         log.info("[GPS Service] MATCH! User: {} entered area: {} | Task: {} | Process: {}",
-                userId, task.getDestinationId(), task.getTaskId(), task.getProcessInstanceId());
+                userId, task.destinationId(), task.taskId(), task.processInstanceId());
 
         // Update position with the confirmed destination
-        positionService.updatePosition(userId, lat, lon, task.getDestinationId());
+        positionService.updatePosition(userId, lat, lon, task.destinationId());
 
         // Signal the execution to continue
         signalTaskCompletion(task);
 
-        return new MovementResponse(
-                true,
-                "Device entered target area: " + task.getDestinationId(),
-                task.getDestinationId(),
-                userId,
-                task.getProcessInstanceId()
-        );
+        return MovementResponse.enteredArea(userId, task.destinationId(), task.processInstanceId());
     }
 
     private void signalTaskCompletion(MovementTask task) {
@@ -229,32 +225,20 @@ public class GpsProcessingService {
                 Thread.sleep(50);
 
                 log.debug("[GPS Service] Signaling execution {} for task {}",
-                        task.getExecutionId(), task.getTaskId());
+                        task.executionId(), task.taskId());
 
-                runtimeService.signal(task.getExecutionId());
+                runtimeService.signal(task.executionId());
 
-                log.info("[GPS Service] Successfully signaled task {} completion", task.getTaskId());
+                log.info("[GPS Service] Successfully signaled task {} completion", task.taskId());
 
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                log.error("[GPS Service] Interrupted while signaling execution {}", task.getExecutionId());
+                log.error("[GPS Service] Interrupted while signaling execution {}", task.executionId());
             } catch (Exception e) {
                 log.error("[GPS Service] Failed to signal execution {} for task {}: {}",
-                        task.getExecutionId(), task.getTaskId(), e.getMessage(), e);
+                        task.executionId(), task.taskId(), e.getMessage(), e);
             }
         }, executorService);
     }
 
-    /**
-     * Inner class to hold movement task data
-     */
-    @AllArgsConstructor
-    @Getter
-    private static class MovementTask {
-        private final String executionId;
-        private final String processInstanceId;
-        private final String taskId;
-        private final String destinationId;
-        private final Execution execution;
-    }
 }

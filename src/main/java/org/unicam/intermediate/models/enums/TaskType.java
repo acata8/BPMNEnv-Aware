@@ -2,9 +2,6 @@ package org.unicam.intermediate.models.enums;
 
 import lombok.Getter;
 
-import java.util.Collections;
-import java.util.List;
-
 @Getter
 public enum TaskType {
     MOVEMENT("movement"),
