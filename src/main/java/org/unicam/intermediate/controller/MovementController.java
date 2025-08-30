@@ -1,27 +1,16 @@
 package org.unicam.intermediate.controller;
 
+import jakarta.validation.Valid;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.camunda.bpm.engine.RepositoryService;
-import org.camunda.bpm.engine.RuntimeService;
-import org.camunda.bpm.engine.runtime.Execution;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import org.unicam.intermediate.config.EnvironmentDataService;
-import org.unicam.intermediate.models.enums.TaskType;
-import org.unicam.intermediate.models.pojo.Place;
-import org.unicam.intermediate.models.dto.MovementResponse;
+import org.unicam.intermediate.models.dto.GpsRequest;
+import org.unicam.intermediate.models.record.MovementResponse;
 import org.unicam.intermediate.models.dto.Response;
-import org.unicam.intermediate.service.environmental.MovementService;
-import org.unicam.intermediate.service.participant.ParticipantPositionService;
-import org.unicam.intermediate.service.xml.AbstractXmlService;
-import org.unicam.intermediate.service.xml.XmlServiceDispatcher;
+import org.unicam.intermediate.service.environmental.movement.GpsProcessingService;
 
 import java.util.List;
-import java.util.Optional;
-
-import static org.unicam.intermediate.utils.Constants.SPACE_NS;
 
 @RestController
 @RequestMapping("/api/movement")
@@ -29,111 +18,54 @@ import static org.unicam.intermediate.utils.Constants.SPACE_NS;
 @AllArgsConstructor
 public class MovementController {
 
-    private final RuntimeService runtimeService;
-    private final RepositoryService repositoryService;
-    private final MovementService movementService;
-    private final ParticipantPositionService positionService;
-    private final XmlServiceDispatcher xmlServiceDispatcher;
-    private final EnvironmentDataService environmentDataService;
-    
+    private final GpsProcessingService gpsProcessingService;
+
     @PostMapping("/gps")
-    public ResponseEntity<Response<MovementResponse>> receiveGpsByUser(
-            @RequestParam("userId") String userId,
-            @RequestParam("lat") double lat,
-            @RequestParam("lon") double lon
-    ) {
-        if (userId == null || userId.isBlank()) {
-            return ResponseEntity.badRequest()
-                    .body(Response.error("Missing or invalid userId"));
-        }
+    public ResponseEntity<Response<MovementResponse>> receiveGps(
+            @Valid @RequestBody GpsRequest request) {
 
-        try {
-            // 1) tutte le process definition attive
-            var definitions = repositoryService
-                    .createProcessDefinitionQuery()
-                    .active()
-                    .list();
+        log.info("[GPS API] Received GPS data for user: {}", request.getUserId());
 
-            for (var def : definitions) {
-                // Get all tasks with movement type dynamically
-                List<String> movementTaskIds = movementService.getTasksOfType(def, TaskType.MOVEMENT);
-                if (movementTaskIds.isEmpty()) {
-                    continue;
-                }
+        MovementResponse response = gpsProcessingService.processUserLocation(
+                request.getUserId(),
+                request.getLat(),
+                request.getLon()
+        );
 
-                // 3) ottengo le Execution attive su quei task *autorizzate per userId*
-                List<Execution> executions = movementService
-                        .findActiveExecutionsForActivities(def.getId(), movementTaskIds, userId);
+        return ResponseEntity.ok(Response.ok(response));
+    }
 
-                // 4) per ogni execution, leggo la variabile dinamica taskId.localName
-                for (Execution exe : executions) {
-                    // (a) recupero l'activityId vero dalla execution
-                    List<String> activeIds = runtimeService
-                            .getActiveActivityIds(exe.getId());
-                    if (activeIds.isEmpty()) {
-                        continue;
-                    }
-                    String taskId = activeIds.get(0);
+    @PostMapping("/gps/process/{processId}")
+    public ResponseEntity<Response<MovementResponse>> receiveGpsForProcess(
+            @PathVariable String processId,
+            @Valid @RequestBody GpsRequest request) {
 
-                    // (b) prendo il servizio basato su space:type ("movement")
-                    AbstractXmlService xmlSvc = xmlServiceDispatcher
-                            .get(SPACE_NS.getNamespaceUri(),
-                                    xmlServiceDispatcher
-                                            .get(SPACE_NS.getNamespaceUri(), TaskType.MOVEMENT)
-                                            .getTypeKey());
+        log.info("[GPS API] Received GPS data for user: {} in process: {}",
+                request.getUserId(), processId);
 
-                    // (c) costruisco la chiave dinamica: "Activity_0c0m8b5.destination"
-                    String varKey = taskId + "." + xmlSvc.getLocalName();
-                    String destinationKey = (String)
-                            runtimeService.getVariable(exe.getId(), varKey);
+        MovementResponse response = gpsProcessingService.processLocationForProcess(
+                request.getUserId(),
+                request.getLat(),
+                request.getLon(),
+                processId
+        );
 
-                    if (destinationKey == null) {
-                        log.warn("[GPS] no variable {} on execution {}", varKey, exe.getId());
-                        continue;
-                    }
+        return ResponseEntity.ok(Response.ok(response));
+    }
 
-                    // verifico se il place esiste e l'utente è entrato nell'area
-                    Optional<Place> placeOpt = environmentDataService.getData()
-                            .getPlaces().stream()
-                            .filter(p -> p.getId().equals(destinationKey))
-                            .findFirst();
+    @GetMapping("/destinations/{userId}")
+    public ResponseEntity<Response<List<String>>> getActiveDestinations(
+            @PathVariable String userId) {
 
-                    if (placeOpt.isEmpty()) {
-                        continue;
-                    }
-                    Place place = placeOpt.get();
+        List<String> destinations = gpsProcessingService.getActiveDestinations(userId);
+        return ResponseEntity.ok(Response.ok(destinations));
+    }
 
-                    if (place.getLocationArea().contains(lat, lon)) {
-                        positionService.updatePosition(userId, lat, lon, destinationKey);
-                        log.info("[GPS] User {} entered area '{}'", userId, destinationKey);
-                        runtimeService.signal(exe.getId());
+    @GetMapping("/status/{userId}")
+    public ResponseEntity<Response<Boolean>> hasActiveMovementTasks(
+            @PathVariable String userId) {
 
-                        MovementResponse resp = new MovementResponse(
-                                true,
-                                "Device is inside the area",
-                                destinationKey,
-                                userId,
-                                null
-                        );
-                        return ResponseEntity.ok(Response.ok(resp));
-                    }
-                }
-            }
-
-            log.info("[GPS] Device NOT in area for user {}", userId);
-            MovementResponse resp = new MovementResponse(
-                    false,
-                    "Device is NOT inside the area",
-                    null,
-                    userId,
-                    null
-            );
-            return ResponseEntity.ok(Response.ok(resp));
-
-        } catch (Exception ex) {
-            log.error("[GPS ERROR] Exception while processing GPS data", ex);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Response.error("Internal server error: " + ex.getMessage()));
-        }
+        boolean hasActive = gpsProcessingService.hasActiveMovementTasks(userId);
+        return ResponseEntity.ok(Response.ok(hasActive));
     }
 }

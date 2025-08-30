@@ -1,12 +1,12 @@
-package org.unicam.intermediate.service.environmental;
+package org.unicam.intermediate.service;
 
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.camunda.bpm.engine.delegate.ExecutionListener;
 import org.camunda.bpm.engine.impl.bpmn.behavior.AbstractBpmnActivityBehavior;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Service;
 import org.unicam.intermediate.activity.WaitStateActivity;
-import org.unicam.intermediate.listener.execution.UnbindingExecutionListener;
 import org.unicam.intermediate.models.enums.TaskType;
 
 import java.util.HashMap;
@@ -16,16 +16,15 @@ import static org.unicam.intermediate.utils.Constants.*;
 
 @Service
 @Slf4j
+@Getter
 public class TaskTypeRegistry {
 
     private final Map<String, TaskTypeDefinition> taskTypes = new HashMap<>();
     private final ApplicationContext applicationContext;
-    private final UnbindingExecutionListener unbindingExecutionListener;
 
-    public TaskTypeRegistry(ApplicationContext applicationContext, UnbindingExecutionListener unbindingExecutionListener) {
+    public TaskTypeRegistry(ApplicationContext applicationContext) {
         this.applicationContext = applicationContext;
         initializeDefaultTaskTypes();
-        this.unbindingExecutionListener = unbindingExecutionListener;
     }
 
     private void initializeDefaultTaskTypes() {
@@ -66,7 +65,6 @@ public class TaskTypeRegistry {
             this.listenerBeanName = listenerBeanName;
         }
 
-        public TaskType getTaskType() { return taskType; }
         public AbstractBpmnActivityBehavior createBehavior() { return behaviorSupplier.get(); }
 
         public ExecutionListener getListener() {
@@ -78,6 +76,5 @@ public class TaskTypeRegistry {
             }
         }
 
-        public String getListenerBeanName() { return listenerBeanName; }
     }
 }

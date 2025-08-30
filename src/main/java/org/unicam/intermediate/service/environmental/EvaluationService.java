@@ -1,8 +1,7 @@
-package org.unicam.intermediate.service;
+package org.unicam.intermediate.service.environmental;
 
 import lombok.AllArgsConstructor;
 import org.camunda.bpm.engine.delegate.DelegateExecution;
-import org.unicam.intermediate.service.environmental.TemperatureService;
 import org.unicam.intermediate.utils.BooleanEvaluation.BooleanExpressionEvaluator;
 import org.unicam.intermediate.utils.BooleanEvaluation.PlaceExpressionParser;
 

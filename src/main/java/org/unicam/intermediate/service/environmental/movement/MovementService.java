@@ -1,4 +1,4 @@
-package org.unicam.intermediate.service.environmental;
+package org.unicam.intermediate.service.environmental.movement;
 
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -15,6 +15,7 @@ import org.camunda.bpm.model.bpmn.instance.UserTask;
 import org.camunda.bpm.model.xml.instance.ModelElementInstance;
 import org.springframework.stereotype.Service;
 import org.unicam.intermediate.models.enums.TaskType;
+import org.unicam.intermediate.service.TaskTypeRegistry;
 import org.unicam.intermediate.utils.Constants;
 
 import java.util.ArrayList;
@@ -36,13 +37,24 @@ public class MovementService {
     /**
      * Checks if a process definition has any tasks with the specified space:type
      */
-    public boolean hasTasksOfType(ProcessDefinition definition, String taskType) {
+    public boolean hasTasksOfType(ProcessDefinition definition, TaskType taskType) {
         BpmnModelInstance instance = repositoryService.getBpmnModelInstance(definition.getId());
 
         return instance
                 .getModelElementsByType(Task.class)
                 .stream()
                 .anyMatch(task -> hasSpaceTypeValue(task, taskType));
+    }
+
+
+    public List<ProcessDefinition> getActiveProcessDefinitionsWithMovementTasks() {
+        return repositoryService
+                .createProcessDefinitionQuery()
+                .active()
+                .list()
+                .stream()
+                .filter(def -> hasTasksOfType(def, TaskType.MOVEMENT))
+                .collect(Collectors.toList());
     }
 
     /**
@@ -52,7 +64,7 @@ public class MovementService {
         BpmnModelInstance model = repositoryService.getBpmnModelInstance(definition.getId());
 
         return model.getModelElementsByType(Task.class).stream()
-                .filter(task -> hasSpaceTypeValue(task, taskType.toString()))
+                .filter(task -> hasSpaceTypeValue(task, taskType))
                 .map(Task::getId)
                 .collect(Collectors.toList());
     }
@@ -118,9 +130,9 @@ public class MovementService {
         return executions;
     }
 
-    private boolean hasSpaceTypeValue(Task task, String expectedType) {
+    private boolean hasSpaceTypeValue(Task task, TaskType expectedType) {
         String actualType = extractSpaceTypeValue(task);
-        return expectedType.equals(actualType);
+        return expectedType.toString().equals(actualType);
     }
 
     private String extractSpaceTypeValue(Task task) {

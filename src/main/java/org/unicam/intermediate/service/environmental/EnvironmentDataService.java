@@ -6,6 +6,7 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.camunda.bpm.engine.RepositoryService;
 import org.camunda.bpm.engine.repository.Deployment;
+import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Service;
 import org.unicam.intermediate.models.pojo.EnvironmentData;
 import org.unicam.intermediate.models.pojo.Place;
@@ -21,25 +22,26 @@ import java.util.Optional;
 @Service
 @Slf4j
 @Getter
-public class EnvironmentService {
+@Scope("singleton")
+public class EnvironmentDataService {
 
     private final RepositoryService repositoryService;
     private final ObjectMapper objectMapper;
 
     // Hold the data directly in the service
-    private EnvironmentData data;
+    private EnvironmentData data = new EnvironmentData();
 
-    public EnvironmentService(RepositoryService repositoryService) {
+    public EnvironmentDataService(RepositoryService repositoryService) {
         this.repositoryService = repositoryService;
         this.objectMapper = new ObjectMapper();
     }
 
     @PostConstruct
     public void initialize() {
-        reloadFromLatestDeployment();
+        loadEnvironmentData();
     }
 
-    public void reloadFromLatestDeployment() {
+    public void loadEnvironmentData() {
         List<Deployment> deployments = repositoryService
                 .createDeploymentQuery()
                 .orderByDeploymentTime().desc()
@@ -90,7 +92,7 @@ public class EnvironmentService {
     }
 
     public Optional<Place> findPlaceById(String placeId) {
-        if (placeId == null || data == null || data.getPlaces() == null) {
+        if (placeId == null || data == null || data.getPlaces() == null || data.getPlaces().isEmpty()) {
             return Optional.empty();
         }
         return data.getPlaces().stream()
@@ -118,11 +120,15 @@ public class EnvironmentService {
     // Method to refresh environment (can be called from controllers/delegates)
     public void refresh() {
         log.info("[EnvironmentService] Manual refresh triggered");
-        reloadFromLatestDeployment();
+        loadEnvironmentData();
     }
 
-    // Check if environment is loaded
     public boolean isLoaded() {
         return data != null && data.getPlaces() != null && !data.getPlaces().isEmpty();
+    }
+
+    public void reloadEnvironment() {
+        loadEnvironmentData();
+        log.info("[EnvironmentDataService] Environment data reloaded");
     }
 }

@@ -3,7 +3,6 @@ package org.unicam.intermediate.service.environmental;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.unicam.intermediate.config.EnvironmentDataService;
 import org.unicam.intermediate.models.pojo.Place;
 
 import java.io.BufferedReader;

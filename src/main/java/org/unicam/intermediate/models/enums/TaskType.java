@@ -13,25 +13,13 @@ public enum TaskType {
     UNDEFINED("undefined");
 
     private final String xmlValue;
+
     TaskType(String xmlValue) {
         this.xmlValue = xmlValue;
     }
 
-    public static TaskType fromXmlValue(String xmlValue) {
-        if (xmlValue == null || xmlValue.trim().isEmpty()) {
-            return null;
-        }
-        
-        for (TaskType type : values()) {
-            if (type.xmlValue.equalsIgnoreCase(xmlValue.trim())) {
-                return type;
-            }
-        }
-        return null;
-    }
-
     @Override
     public String toString() {
-        return xmlValue;
+        return xmlValue.toLowerCase();
     }
 }

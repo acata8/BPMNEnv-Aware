@@ -13,4 +13,9 @@ public enum ExtendedElementTaskType {
     ExtendedElementTaskType(String xmlValue) {
         this.xmlValue = xmlValue;
     }
+
+    @Override
+    public String toString() {
+        return xmlValue.toLowerCase();
+    }
 }

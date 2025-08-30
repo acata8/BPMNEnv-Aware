@@ -1,5 +1,7 @@
 package org.unicam.intermediate.controller;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
 import lombok.extern.slf4j.Slf4j;
 import org.camunda.bpm.engine.RuntimeService;
 import org.camunda.bpm.engine.TaskService;
@@ -8,6 +10,7 @@ import org.camunda.bpm.engine.task.Task;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.unicam.intermediate.models.dto.ProcessStartRequest;
 import org.unicam.intermediate.models.dto.ProcessStartResponse;
 import org.unicam.intermediate.models.dto.Response;
 
@@ -29,17 +32,28 @@ public class ProcessController {
 
     @PostMapping("/start")
     public ResponseEntity<Response<ProcessStartResponse>> startProcess(
-            @RequestParam("processId") String processId,
-            @RequestParam("userId") String userId
-    ) {
+            @Valid @RequestBody ProcessStartRequest request) {
         try {
-            if (processId == null || processId.isBlank() || userId == null || userId.isBlank()) {
-                return ResponseEntity.badRequest()
-                        .body(Response.error("processId and userId are required"));
+            Map<String, Object> variables = new HashMap<>();
+            variables.put("userId", request.getUserId());
+
+            if (request.getVariables() != null) {
+                variables.putAll(request.getVariables());
             }
 
-            ProcessInstance instance = runtimeService.startProcessInstanceByKey(processId, Map.of("userId", userId));
-            log.info("[Process Started] userId={} pid={}", userId, instance.getProcessInstanceId());
+            ProcessInstance instance = request.getBusinessKey() != null
+                    ? runtimeService.startProcessInstanceByKey(
+                    request.getProcessId(),
+                    request.getBusinessKey(),
+                    variables)
+                    : runtimeService.startProcessInstanceByKey(
+                    request.getProcessId(),
+                    variables);
+
+            log.info("[Process Started] userId={} pid={} businessKey={}",
+                    request.getUserId(),
+                    instance.getProcessInstanceId(),
+                    instance.getBusinessKey());
 
             ProcessStartResponse response = new ProcessStartResponse(
                     instance.getProcessInstanceId(),
@@ -49,14 +63,15 @@ public class ProcessController {
             return ResponseEntity.ok(Response.ok(response));
 
         } catch (Exception e) {
-            log.error("[Start Process] Failed to start process. processId={}, userId={}", processId, userId, e);
+            log.error("[Start Process] Failed to start process. request={}", request, e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Response.error("Failed to start process: " + e.getMessage()));
         }
     }
 
     @GetMapping("/by-user")
-    public ResponseEntity<Response<List<String>>> getProcessesByUser(@RequestParam("userId") String userId) {
+    public ResponseEntity<Response<List<String>>> getProcessesByUser(
+            @RequestParam @NotBlank(message = "userId is required") String userId) {
         try {
             if (userId == null || userId.isBlank()) {
                 return ResponseEntity.badRequest().body(Response.error("userId is required"));
@@ -81,7 +96,7 @@ public class ProcessController {
     }
 
     @GetMapping("/tasks")
-    public ResponseEntity<Response<List<Map<String, String>>>> getTasksByUser(@RequestParam("userId") String userId) {
+    public ResponseEntity<Response<List<Map<String, String>>>> getTasksByUser(@RequestParam @NotBlank(message = "userId is required") String userId) {
         try {
             if (userId == null || userId.isBlank()) {
                 return ResponseEntity.badRequest().body(Response.error("userId is required"));
