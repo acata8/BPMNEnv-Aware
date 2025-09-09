@@ -61,6 +61,18 @@ public class ParticipantService {
     }
 
     /**
+     * Get participant by ID from the collaboration
+     */
+    public org.unicam.intermediate.models.Participant getParticipantById(DelegateExecution execution, String participantId) {
+        if (participantId == null) {
+            return null;
+        }
+
+        CollaborationData collabData = getCollaborationData(execution);
+        return collabData.getParticipantById(participantId);
+    }
+
+    /**
      * Gets all participants in the current collaboration
      */
     public List<org.unicam.intermediate.models.Participant> getAllParticipants(DelegateExecution execution) {

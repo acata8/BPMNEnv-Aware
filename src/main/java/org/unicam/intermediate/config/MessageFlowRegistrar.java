@@ -1,6 +1,5 @@
 package org.unicam.intermediate.config;
 
-import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.camunda.bpm.engine.RepositoryService;
 import org.camunda.bpm.engine.repository.ProcessDefinition;
@@ -19,10 +18,12 @@ import java.util.List;
  */
 @Component
 @Slf4j
-@AllArgsConstructor
 public class MessageFlowRegistrar {
 
+    @Autowired
     private RepositoryService repositoryService;
+
+    @Autowired
     private MessageFlowRegistry messageFlowRegistry;
 
     @EventListener(ApplicationReadyEvent.class)

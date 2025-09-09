@@ -1,6 +1,5 @@
 package org.unicam.intermediate.listener;
 
-import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.camunda.bpm.engine.delegate.ExecutionListener;
 import org.camunda.bpm.engine.impl.bpmn.listener.DelegateExpressionExecutionListener;
@@ -24,9 +23,9 @@ import static org.unicam.intermediate.utils.Constants.*;
 
 @Component
 @Slf4j
-@AllArgsConstructor
 public class DynamicParseListener extends AbstractBpmnParseListener {
 
+    @Autowired
     @Lazy  // Break circular dependency
     private MessageFlowRegistry messageFlowRegistry;
 
