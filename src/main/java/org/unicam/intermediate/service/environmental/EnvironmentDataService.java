@@ -8,6 +8,7 @@ import org.camunda.bpm.engine.RepositoryService;
 import org.camunda.bpm.engine.repository.Deployment;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Service;
+import org.unicam.intermediate.models.environmental.LocationArea;
 import org.unicam.intermediate.models.pojo.EnvironmentData;
 import org.unicam.intermediate.models.pojo.Place;
 import org.unicam.intermediate.models.pojo.LogicalPlace;

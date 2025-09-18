@@ -7,16 +7,6 @@ import org.unicam.intermediate.models.enums.TaskType;
 
 import java.time.Instant;
 
-/**
- * Represents a binding state during a process execution, where a specific task
- * type defines the type of operation (e.g., binding, unbinding). Each binding instance
- * is uniquely identified by a combination of business key and participant IDs, allowing
- * tracking of interactions between participants within the defined process.
- *
- * This class provides methods to generate unique keys for waiting and checking states
- * associated with the binding process. The toString representation includes details
- * of the task type, participants involved, business key, and creation timestamp.
- */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -28,19 +18,28 @@ public class WaitingBinding {
     private String executionId;
     private TaskType taskType;
     private Instant createdAt;
-    
+    private String requiredPlace; // Place dove deve avvenire il binding/unbinding
+
+    public WaitingBinding(String processDefinitionKey, String targetParticipantId,
+                          String currentParticipantId, String businessKey,
+                          String executionId, TaskType taskType, Instant createdAt) {
+        this(processDefinitionKey, targetParticipantId, currentParticipantId,
+                businessKey, executionId, taskType, createdAt, null);
+    }
+
     public String getWaitingKey() {
         return businessKey + ":" + targetParticipantId;
     }
-    
+
     public String getLookupKey() {
         return businessKey + ":" + currentParticipantId;
     }
 
     @Override
     public String toString() {
-        return String.format("%s waiting: %s ↔ %s (key: %s, created: %s)",
+        return String.format("%s waiting%s: %s ↔ %s (key: %s, created: %s)",
                 taskType != null ? taskType.toString() : "Unknown",
+                requiredPlace != null ? " in place " + requiredPlace : "",
                 currentParticipantId,
                 targetParticipantId,
                 businessKey,

@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 import org.unicam.intermediate.models.Participant;
 import org.unicam.intermediate.models.enums.TaskType;
 import org.unicam.intermediate.service.participant.ParticipantService;
+import org.unicam.intermediate.service.participant.UserParticipantMappingService;
 import org.unicam.intermediate.service.xml.AbstractXmlService;
 import org.unicam.intermediate.service.xml.XmlServiceDispatcher;
 
@@ -18,10 +19,14 @@ public class MovementExecutionListener implements ExecutionListener {
 
     private final XmlServiceDispatcher dispatcher;
     private final ParticipantService participantService;
+    private final UserParticipantMappingService userParticipantMapping;
 
-    public MovementExecutionListener(XmlServiceDispatcher dispatcher, ParticipantService participantService) {
+    public MovementExecutionListener(XmlServiceDispatcher dispatcher,
+                                     ParticipantService participantService,
+                                     UserParticipantMappingService userParticipantMapping) {
         this.dispatcher = dispatcher;
         this.participantService = participantService;
+        this.userParticipantMapping = userParticipantMapping;
     }
 
     @Override
@@ -46,6 +51,21 @@ public class MovementExecutionListener implements ExecutionListener {
         execution.setVariable(varKey, value);
 
         Participant participant = participantService.resolveCurrentParticipant(execution);
+        String businessKey = execution.getBusinessKey();
+
+        String userId = (String) execution.getVariable("userId");
+
+        if (userId != null && participant != null && businessKey != null) {
+            userParticipantMapping.registerUserAsParticipant(
+                    businessKey,
+                    userId,
+                    participant.getId()
+            );
+
+            log.info("[MOVEMENT] Auto-registered user {} as participant {} for BK {}",
+                    userId, participant.getId(), businessKey);
+        }
+
         String activityName = execution.getCurrentActivityName();
         
         log.info("[MOVEMENT] WAITING | Activity: {} - {} | Participant: {} | Reason: Waiting for GPS coordinates to reach: {}", 

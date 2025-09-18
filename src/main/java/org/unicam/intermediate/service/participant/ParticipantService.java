@@ -4,12 +4,15 @@ import lombok.extern.slf4j.Slf4j;
 import org.camunda.bpm.engine.RepositoryService;
 import org.camunda.bpm.engine.RuntimeService;
 import org.camunda.bpm.engine.delegate.DelegateExecution;
+import org.camunda.bpm.engine.runtime.ProcessInstance;
+import org.camunda.bpm.engine.task.Task;
 import org.camunda.bpm.model.bpmn.BpmnModelInstance;
-import org.camunda.bpm.model.bpmn.instance.Collaboration;
-import org.camunda.bpm.model.bpmn.instance.Participant;
+import org.camunda.bpm.model.bpmn.instance.*;
 import org.camunda.bpm.model.bpmn.instance.Process;
+import org.camunda.bpm.model.xml.instance.ModelElementInstance;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import java.util.Collection;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -70,6 +73,131 @@ public class ParticipantService {
 
         CollaborationData collabData = getCollaborationData(execution);
         return collabData.getParticipantById(participantId);
+    }
+
+    public String resolveParticipantForTask(Task task) {
+        try {
+            // 1. Prima prova dalle variabili del processo
+            ProcessInstance pi = runtimeService.createProcessInstanceQuery()
+                    .processInstanceId(task.getProcessInstanceId())
+                    .singleResult();
+
+            if (pi == null) {
+                log.warn("[ParticipantService] No process instance found for task {}", task.getId());
+                return "Participant_Unknown";
+            }
+
+            // Check process variables first
+            Object participantId = runtimeService.getVariable(pi.getId(), "participantId");
+            if (participantId != null) {
+                log.debug("[ParticipantService] Found participantId in variables: {}", participantId);
+                return participantId.toString();
+            }
+
+            // 2. Ottieni il modello BPMN
+            BpmnModelInstance model = repositoryService.getBpmnModelInstance(task.getProcessDefinitionId());
+
+            // 3. Trova il task nel modello
+            ModelElementInstance taskElement = model.getModelElementById(task.getTaskDefinitionKey());
+            if (taskElement == null) {
+                log.warn("[ParticipantService] Task element {} not found in BPMN", task.getTaskDefinitionKey());
+                return "Participant_Default";
+            }
+
+            // 4. Risali al processo che contiene questo task
+            if (taskElement instanceof FlowNode) {
+                FlowNode flowNode = (FlowNode) taskElement;
+
+                // Ottieni il subprocess o processo padre
+                BaseElement container = (BaseElement) flowNode.getParentElement();
+                while (container != null && !(container instanceof Process)) {
+                    container = (BaseElement) container.getParentElement();
+                }
+
+                if (container instanceof Process) {
+                    Process process = (Process) container;
+
+                    // 5. Trova il participant che referenzia questo processo
+                    Collection<Participant> participants = model.getModelElementsByType(Participant.class);
+                    for (Participant participant : participants) {
+                        if (participant.getProcess() != null &&
+                                participant.getProcess().getId().equals(process.getId())) {
+
+                            log.info("[ParticipantService] Resolved participant {} for task {} in process {}",
+                                    participant.getId(), task.getTaskDefinitionKey(), process.getId());
+
+                            return participant.getId();
+                        }
+                    }
+                }
+            }
+
+            // 6. Se siamo in un processo senza collaboration, usa un default basato sul processo
+            String processKey = repositoryService.getProcessDefinition(task.getProcessDefinitionId()).getKey();
+            String defaultParticipant = "Participant_" + processKey;
+
+            log.info("[ParticipantService] No participant found in model, using default: {}", defaultParticipant);
+            return defaultParticipant;
+
+        } catch (Exception e) {
+            log.error("[ParticipantService] Error resolving participant for task {}", task.getId(), e);
+            return "Participant_Error";
+        }
+    }
+
+    /**
+     * Metodo alternativo che usa l'execution context invece del task
+     */
+    public String resolveParticipantFromExecution(DelegateExecution execution) {
+        try {
+            String processDefinitionId = execution.getProcessDefinitionId();
+            BpmnModelInstance model = repositoryService.getBpmnModelInstance(processDefinitionId);
+
+            // Ottieni il processo corrente dall'execution
+            String currentProcessId = execution.getProcessDefinitionId()
+                    .substring(0, execution.getProcessDefinitionId().indexOf(':'));
+
+            // Trova la collaboration
+            Collection<Collaboration> collaborations = model.getModelElementsByType(Collaboration.class);
+            if (collaborations.isEmpty()) {
+                log.debug("[ParticipantService] No collaboration found, single participant process");
+                return "Participant_" + currentProcessId;
+            }
+
+            Collaboration collaboration = collaborations.iterator().next();
+
+            // Trova il participant per questo processo
+            for (Participant participant : collaboration.getParticipants()) {
+                Process process = participant.getProcess();
+                if (process != null && process.getId().equals(currentProcessId)) {
+                    log.debug("[ParticipantService] Found participant {} for process {}",
+                            participant.getId(), currentProcessId);
+                    return participant.getId();
+                }
+            }
+
+            // Fallback
+            return "Participant_" + currentProcessId;
+
+        } catch (Exception e) {
+            log.error("[ParticipantService] Error resolving participant from execution", e);
+            return "Participant_Unknown";
+        }
+    }
+
+    public String getParticipantName(String processDefinitionId, String participantId) {
+        try {
+            BpmnModelInstance model = repositoryService.getBpmnModelInstance(processDefinitionId);
+            Participant participant = model.getModelElementById(participantId);
+
+            if (participant != null && participant.getName() != null) {
+                return participant.getName();
+            }
+        } catch (Exception e) {
+            log.debug("[ParticipantService] Error getting participant name", e);
+        }
+
+        return participantId;
     }
 
     /**

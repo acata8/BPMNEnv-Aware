@@ -1,50 +1,54 @@
+// src/main/java/org/unicam/intermediate/websocket/WebSocketHandshakeInterceptor.java
+
 package org.unicam.intermediate.websocket;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.server.ServerHttpRequest;
 import org.springframework.http.server.ServerHttpResponse;
 import org.springframework.http.server.ServletServerHttpRequest;
-import org.springframework.stereotype.Component;
 import org.springframework.web.socket.WebSocketHandler;
 import org.springframework.web.socket.server.HandshakeInterceptor;
 
+import jakarta.servlet.http.HttpServletRequest;
 import java.util.Map;
 
-@Component
 @Slf4j
 public class GpsHandshakeInterceptor implements HandshakeInterceptor {
 
     @Override
     public boolean beforeHandshake(ServerHttpRequest request, ServerHttpResponse response,
                                    WebSocketHandler wsHandler, Map<String, Object> attributes) throws Exception {
-        
-        if (request instanceof ServletServerHttpRequest servletRequest) {
-            String userId = servletRequest.getServletRequest().getParameter("userId");
-            String token = servletRequest.getServletRequest().getParameter("token");
-            
-            if (userId == null || userId.isBlank()) {
-                log.warn("[GPS WS] Connection rejected - missing userId");
+
+        if (request instanceof ServletServerHttpRequest) {
+            HttpServletRequest servletRequest = ((ServletServerHttpRequest) request).getServletRequest();
+
+            // Estrai userId dalla query string
+            String userId = servletRequest.getParameter("userId");
+            String businessKey = servletRequest.getParameter("businessKey");
+
+            log.info("[WS Handshake] Incoming connection - userId: {}, businessKey: {}", userId, businessKey);
+
+            if (userId != null && !userId.isBlank()) {
+                attributes.put("userId", userId);
+
+                if (businessKey != null && !businessKey.isBlank()) {
+                    attributes.put("businessKey", businessKey);
+                }
+
+                log.info("[WS Handshake] Attributes set - userId: {}, businessKey: {}", userId, businessKey);
+                return true;
+            } else {
+                log.error("[WS Handshake] Missing userId in request parameters");
                 return false;
             }
-            
-            // TODO: Bisogna ovviamente valutare il token o l'autorizzazione qui
-            
-            attributes.put("userId", userId);
-            attributes.put("connectionTime", System.currentTimeMillis());
-            
-            log.info("[GPS WS] Handshake accepted for userId: {}", userId);
-            return true;
         }
-        
+
+        log.error("[WS Handshake] Invalid request type");
         return false;
     }
 
     @Override
     public void afterHandshake(ServerHttpRequest request, ServerHttpResponse response,
                                WebSocketHandler wsHandler, Exception exception) {
-        // Log any post-handshake issues
-        if (exception != null) {
-            log.error("[GPS WS] Handshake error", exception);
-        }
     }
 }

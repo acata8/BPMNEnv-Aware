@@ -1,3 +1,5 @@
+// src/main/java/org/unicam/intermediate/listener/execution/BindingExecutionListener.java
+
 package org.unicam.intermediate.listener.execution;
 
 import lombok.AllArgsConstructor;
@@ -9,11 +11,13 @@ import org.springframework.stereotype.Component;
 import org.unicam.intermediate.models.Participant;
 import org.unicam.intermediate.models.WaitingBinding;
 import org.unicam.intermediate.models.enums.TaskType;
+import org.unicam.intermediate.models.pojo.Place;
 import org.unicam.intermediate.service.MessageFlowRegistry;
 import org.unicam.intermediate.service.MessageFlowRegistry.MessageFlowBinding;
 import org.unicam.intermediate.service.environmental.BindingService;
+import org.unicam.intermediate.service.environmental.ProximityService;
 import org.unicam.intermediate.service.participant.ParticipantService;
-import org.unicam.intermediate.service.xml.XmlServiceDispatcher;
+import org.unicam.intermediate.service.participant.UserParticipantMappingService;
 
 import java.time.Instant;
 import java.util.Optional;
@@ -28,8 +32,8 @@ public class BindingExecutionListener implements ExecutionListener {
     private final BindingService bindingService;
     private final RuntimeService runtimeService;
     private final MessageFlowRegistry messageFlowRegistry;
-    private final ParticipantService participantService;
-    private final XmlServiceDispatcher dispatcher;
+    private final ProximityService proximityService;
+    private final UserParticipantMappingService userParticipantMapping;
 
     @Override
     public void notify(DelegateExecution execution) {
@@ -46,49 +50,83 @@ public class BindingExecutionListener implements ExecutionListener {
         String businessKey = execution.getBusinessKey();
 
         // Get message flow binding info
-        MessageFlowBinding flowBinding = messageFlowRegistry.getFlowBinding(
-                processDefinitionId, activityId);
-
+        MessageFlowBinding flowBinding = messageFlowRegistry.getFlowBinding(processDefinitionId, activityId);
         if (flowBinding == null) {
-            log.error("[BINDING] No message flow found for task: {} in process: {}",
-                    activityId, processDefinitionId);
+            log.error("[BINDING] No message flow found for task: {} in process: {}", activityId, processDefinitionId);
             return;
         }
 
-        // Determine current and target participants based on which task we're in
-        String currentParticipantRef;
-        String targetParticipantRef;
 
-        if (activityId.equals(flowBinding.getSourceTaskRef())) {
-            currentParticipantRef = flowBinding.getSourceParticipantRef();
-            targetParticipantRef = flowBinding.getTargetParticipantRef();
-        } else {
-            currentParticipantRef = flowBinding.getTargetParticipantRef();
-            targetParticipantRef = flowBinding.getSourceParticipantRef();
+
+        // Determine participants
+        String currentParticipantRef = activityId.equals(flowBinding.getSourceTaskRef())
+                ? flowBinding.getSourceParticipantRef()
+                : flowBinding.getTargetParticipantRef();
+
+        String targetParticipantRef = activityId.equals(flowBinding.getSourceTaskRef())
+                ? flowBinding.getTargetParticipantRef()
+                : flowBinding.getSourceParticipantRef();
+
+        String userId = (String) execution.getVariable("userId");
+        if (userId != null && currentParticipantRef != null && businessKey != null) {
+            userParticipantMapping.registerUserAsParticipant(
+                    businessKey,
+                    userId,
+                    currentParticipantRef
+            );
+
+            log.info("[BINDING] Auto-registered user {} as participant {} for BK {}",
+                    userId, currentParticipantRef, businessKey);
         }
 
-        Participant currentParticipant = participantService.getParticipantById(execution, currentParticipantRef);
-        Participant targetParticipant = participantService.getParticipantById(execution, targetParticipantRef);
-
-        log.info("[BINDING] Task {} started - Current: {} waiting for Target: {}",
-                activityId,
-                currentParticipant != null ? currentParticipant.getDisplayName() : currentParticipantRef,
-                targetParticipant != null ? targetParticipant.getDisplayName() : targetParticipantRef);
+        log.info("[BINDING] Task {} started - Participant {} waiting for {}",
+                activityId, currentParticipantRef, targetParticipantRef);
 
         // Check if the other participant is already waiting
-        Optional<WaitingBinding> waiting = bindingService.findWaitingBinding(
-                businessKey, currentParticipantRef);
+        Optional<WaitingBinding> waiting = bindingService.findWaitingBinding(businessKey, currentParticipantRef);
 
         if (waiting.isPresent()) {
             WaitingBinding match = waiting.get();
-            log.info("[BINDING] MATCH FOUND - Both participants ready, signaling...");
 
-            bindingService.removeWaitingBinding(businessKey, currentParticipantRef);
-            runtimeService.signal(match.getExecutionId());
-            execution.setVariable("bindingCompleted_" + activityId, true);
+            // Check if both participants are in the same place
+            Place bindingPlace = proximityService.getBindingPlace(
+                    currentParticipantRef, match.getCurrentParticipantId());
+
+            if (bindingPlace != null) {
+                log.info("[BINDING] SUCCESS - Both participants in same place: {} ({})",
+                        bindingPlace.getId(), bindingPlace.getName());
+
+                // Store the binding location
+                execution.setVariable("bindingPlaceId", bindingPlace.getId());
+                execution.setVariable("bindingPlaceName", bindingPlace.getName());
+
+                // Remove waiting and signal both
+                bindingService.removeWaitingBinding(businessKey, currentParticipantRef);
+                runtimeService.signal(match.getExecutionId());
+                execution.setVariable("bindingCompleted_" + activityId, true);
+
+            } else {
+                // Both waiting but not in same place - check why
+                ProximityService.BindingReadiness readiness = proximityService.checkBindingReadiness(
+                        currentParticipantRef, match.getCurrentParticipantId());
+
+                log.warn("[BINDING] CANNOT BIND - {}", readiness.message());
+
+                // Keep both waiting
+                WaitingBinding newWaiting = new WaitingBinding(
+                        processDefinitionId,
+                        targetParticipantRef,
+                        currentParticipantRef,
+                        businessKey,
+                        execution.getId(),
+                        TaskType.BINDING,
+                        Instant.now()
+                );
+                bindingService.addWaitingBinding(newWaiting);
+            }
 
         } else {
-            // Add to waiting list
+            // First participant - add to waiting
             WaitingBinding newWaiting = new WaitingBinding(
                     processDefinitionId,
                     targetParticipantRef,
@@ -98,9 +136,9 @@ public class BindingExecutionListener implements ExecutionListener {
                     TaskType.BINDING,
                     Instant.now()
             );
-
             bindingService.addWaitingBinding(newWaiting);
-            log.info("[BINDING] Added to waiting list for participant synchronization");
+
+            log.info("[BINDING] WAITING - First participant added to waiting list");
         }
     }
 
@@ -109,9 +147,7 @@ public class BindingExecutionListener implements ExecutionListener {
         String businessKey = execution.getBusinessKey();
         String processDefinitionId = execution.getProcessDefinitionId();
 
-        MessageFlowRegistry.MessageFlowBinding flowBinding = messageFlowRegistry.getFlowBinding(
-                processDefinitionId, activityId);
-
+        MessageFlowBinding flowBinding = messageFlowRegistry.getFlowBinding(processDefinitionId, activityId);
         if (flowBinding != null) {
             String participantRef = activityId.equals(flowBinding.getSourceTaskRef())
                     ? flowBinding.getSourceParticipantRef()
@@ -120,6 +156,7 @@ public class BindingExecutionListener implements ExecutionListener {
             bindingService.removeWaitingBinding(businessKey, participantRef);
         }
 
+        // Clean up variables
         execution.removeVariable("bindingCompleted_" + activityId);
         log.info("[BINDING] Task {} ended", activityId);
     }
