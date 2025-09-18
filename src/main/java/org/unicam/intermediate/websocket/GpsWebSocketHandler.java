@@ -3,23 +3,31 @@ package org.unicam.intermediate.websocket;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.camunda.bpm.engine.IdentityService;
+import org.camunda.bpm.engine.RepositoryService;
 import org.camunda.bpm.engine.RuntimeService;
+import org.camunda.bpm.engine.TaskService;
+import org.camunda.bpm.engine.identity.Group;
 import org.camunda.bpm.engine.runtime.Execution;
 import org.camunda.bpm.engine.runtime.ProcessInstance;
+import org.camunda.bpm.engine.task.Task;
+import org.camunda.bpm.model.bpmn.BpmnModelInstance;
+import org.camunda.bpm.model.bpmn.instance.Participant;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.*;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 import org.unicam.intermediate.models.WaitingBinding;
 import org.unicam.intermediate.models.dto.websocket.GpsMessage;
 import org.unicam.intermediate.models.dto.websocket.GpsResponse;
-import org.unicam.intermediate.models.environmental.Coordinate;
 import org.unicam.intermediate.models.pojo.Place;
 import org.unicam.intermediate.service.environmental.BindingService;
 import org.unicam.intermediate.service.environmental.EnvironmentDataService;
 import org.unicam.intermediate.service.environmental.LocationEventService;
 import org.unicam.intermediate.service.environmental.ProximityService;
 import org.unicam.intermediate.service.participant.ParticipantPositionService;
+import org.unicam.intermediate.service.participant.ParticipantService;
 import org.unicam.intermediate.service.participant.UserParticipantMappingService;
+import org.unicam.intermediate.service.task.TaskTrackingService;
 import org.unicam.intermediate.service.websocket.WebSocketSessionManager;
 
 import java.io.IOException;
@@ -43,43 +51,14 @@ public class GpsWebSocketHandler extends TextWebSocketHandler {
     private final EnvironmentDataService environmentDataService;
     private final BindingService bindingService;
     private final ProximityService proximityService;
+    private final TaskService taskService;
+    private final RepositoryService repositoryService;
+    private final IdentityService identityService;
+    private final TaskTrackingService taskTrackingService;
+    private final ParticipantService participantService;
 
     private final ScheduledExecutorService heartbeatExecutor = Executors.newScheduledThreadPool(1);
     private final ConcurrentHashMap<String, Long> lastActivity = new ConcurrentHashMap<>();
-
-    @Override
-    public void afterConnectionEstablished(WebSocketSession session) throws Exception {
-        try {
-            String userId = getUserId(session);
-            if (userId == null) {
-                log.error("[GPS WS] No userId in session attributes");
-                session.close(CloseStatus.BAD_DATA.withReason("Missing userId"));
-                return;
-            }
-
-            sessionManager.addSession(userId, session);
-            lastActivity.put(session.getId(), System.currentTimeMillis());
-
-            // Send simple welcome
-            Map<String, Object> statusData = Map.of(
-                    "sessionId", session.getId(),
-                    "userId", userId
-            );
-
-            GpsResponse welcome = GpsResponse.success("CONNECTION",
-                    "Connected to GPS tracking service", statusData);
-            sendMessage(session, welcome);
-
-            log.info("[GPS WS] Connection established - userId: {}, sessionId: {}",
-                    userId, session.getId());
-
-            scheduleHeartbeat(session);
-
-        } catch (Exception e) {
-            log.error("[GPS WS] Error in afterConnectionEstablished", e);
-            session.close(CloseStatus.SERVER_ERROR.withReason("Server error: " + e.getMessage()));
-        }
-    }
 
     @Override
     protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
@@ -112,6 +91,247 @@ public class GpsWebSocketHandler extends TextWebSocketHandler {
         }
     }
 
+    @Override
+    public void afterConnectionEstablished(WebSocketSession session) throws Exception {
+        try {
+            String userId = getUserId(session);
+            String businessKey = getBusinessKey(session);
+
+            if (userId == null) {
+                log.error("[GPS WS] No userId in session attributes");
+                session.close(CloseStatus.BAD_DATA.withReason("Missing userId"));
+                return;
+            }
+
+            sessionManager.addSession(userId, session);
+            lastActivity.put(session.getId(), System.currentTimeMillis());
+
+            // AUTO-DISCOVER PARTICIPANT
+            String participantId = null;
+            String participantName = null;
+            boolean newlyRegistered = false;
+
+            if (businessKey != null && !businessKey.isBlank()) {
+                UserParticipantMappingService.ParticipantDiscoveryResult discovery =
+                        userParticipantMapping.autoDiscoverAndRegister(userId, businessKey);
+
+                if (discovery != null) {
+                    participantId = discovery.getParticipantId();
+                    participantName = discovery.getParticipantName();
+                    newlyRegistered = discovery.isNewlyRegistered();
+
+                    if (newlyRegistered) {
+                        log.info("[GPS WS] Auto-registered user {} as participant {} for BK {}",
+                                userId, participantId, businessKey);
+                    } else {
+                        log.info("[GPS WS] User {} already mapped to participant {} for BK {}",
+                                userId, participantId, businessKey);
+                    }
+                } else {
+                    log.warn("[GPS WS] Could not auto-discover participant for user {} in BK {}. " +
+                            "Will retry on first location update.", userId, businessKey);
+                }
+            }
+
+            // Send welcome message
+            Map<String, Object> statusData = new HashMap<>();
+            statusData.put("sessionId", session.getId());
+            statusData.put("userId", userId);
+            statusData.put("businessKey", businessKey);
+
+            if (participantId != null) {
+                statusData.put("participantId", participantId);
+                statusData.put("participantName", participantName);
+                statusData.put("mappingStatus", newlyRegistered ? "newly_assigned" : "existing");
+            } else {
+                statusData.put("mappingStatus", "pending");
+                statusData.put("info", "Participant will be assigned on first task interaction");
+            }
+
+            GpsResponse welcome = GpsResponse.success("CONNECTION",
+                    participantId != null ?
+                            "Connected as " + participantName :
+                            "Connected - participant assignment pending",
+                    statusData);
+
+            sendMessage(session, welcome);
+
+            log.info("[GPS WS] Connection established - userId: {}, participantId: {}, sessionId: {}",
+                    userId, participantId, session.getId());
+
+            scheduleHeartbeat(session);
+
+        } catch (Exception e) {
+            log.error("[GPS WS] Error in connection", e);
+            session.close(CloseStatus.SERVER_ERROR.withReason("Server error: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Intelligently discover which participant this user should be
+     */
+    private ParticipantDiscoveryResult discoverParticipantForUser(String userId, String businessKey) {
+        try {
+            // 1. Find all active process instances with this business key
+            List<ProcessInstance> instances = runtimeService.createProcessInstanceQuery()
+                    .processInstanceBusinessKey(businessKey)
+                    .active()
+                    .list();
+
+            if (instances.isEmpty()) {
+                log.debug("[GPS WS] No active process instances for businessKey: {}", businessKey);
+                return null;
+            }
+
+            // 2. Collect all possible participants and their states
+            Map<String, ParticipantInfo> participantStates = new HashMap<>();
+
+            for (ProcessInstance pi : instances) {
+                // Get the process definition to understand participants
+                BpmnModelInstance model = repositoryService.getBpmnModelInstance(pi.getProcessDefinitionId());
+                Collection<Participant> participants = model.getModelElementsByType(Participant.class);
+
+                for (Participant p : participants) {
+                    if (p.getProcess() != null) {
+                        String pId = p.getId();
+                        String pName = p.getName() != null ? p.getName() : pId;
+
+                        ParticipantInfo info = participantStates.computeIfAbsent(pId,
+                                k -> new ParticipantInfo(pId, pName));
+
+                        // Check if this participant has active tasks
+                        List<Task> activeTasks = findTasksForParticipant(pi.getId(), pId);
+                        info.activeTasks.addAll(activeTasks);
+
+                        // Check if this participant is already claimed by another user
+                        String existingUser = userParticipantMapping.getUserForParticipant(businessKey, pId);
+                        if (existingUser != null) {
+                            info.claimedByUser = existingUser;
+                        }
+                    }
+                }
+            }
+
+            // 3. Strategy: Find the best participant for this user
+
+            // 3a. First priority: Tasks already assigned to this user
+            for (ParticipantInfo info : participantStates.values()) {
+                for (Task task : info.activeTasks) {
+                    if (userId.equals(task.getAssignee())) {
+                        log.info("[GPS WS] Found participant {} with task assigned to user {}",
+                                info.participantId, userId);
+                        return new ParticipantDiscoveryResult(info.participantId, info.participantName);
+                    }
+                }
+            }
+
+            // 3b. Second priority: Unclaimed participant with tasks this user can access
+            for (ParticipantInfo info : participantStates.values()) {
+                if (info.claimedByUser == null) { // Not claimed by another user
+                    for (Task task : info.activeTasks) {
+                        if (taskTrackingService.canUserAccessTask(userId, task)) {
+                            log.info("[GPS WS] Found unclaimed participant {} with accessible tasks for user {}",
+                                    info.participantId, userId);
+                            return new ParticipantDiscoveryResult(info.participantId, info.participantName);
+                        }
+                    }
+                }
+            }
+
+            // 3c. Third priority: Based on user groups/roles matching participant names
+            List<Group> userGroups = identityService.createGroupQuery()
+                    .groupMember(userId)
+                    .list();
+
+            for (ParticipantInfo info : participantStates.values()) {
+                if (info.claimedByUser == null) {
+                    // Match based on group names vs participant names
+                    for (Group group : userGroups) {
+                        if (info.participantName.toLowerCase().contains(group.getId().toLowerCase()) ||
+                                group.getId().toLowerCase().contains(info.participantName.toLowerCase())) {
+
+                            log.info("[GPS WS] Matched participant {} to user {} based on group {}",
+                                    info.participantId, userId, group.getId());
+                            return new ParticipantDiscoveryResult(info.participantId, info.participantName);
+                        }
+                    }
+                }
+            }
+
+            // 3d. Last resort: First available unclaimed participant
+            for (ParticipantInfo info : participantStates.values()) {
+                if (info.claimedByUser == null && !info.activeTasks.isEmpty()) {
+                    log.info("[GPS WS] Assigning first available participant {} to user {}",
+                            info.participantId, userId);
+                    return new ParticipantDiscoveryResult(info.participantId, info.participantName);
+                }
+            }
+
+            log.debug("[GPS WS] Could not determine specific participant for user {} in BK {}",
+                    userId, businessKey);
+            return null;
+
+        } catch (Exception e) {
+            log.error("[GPS WS] Error during participant discovery", e);
+            return null;
+        }
+    }
+
+    /**
+     * Find tasks for a specific participant in a process instance
+     */
+    private List<Task> findTasksForParticipant(String processInstanceId, String participantId) {
+        List<Task> result = new ArrayList<>();
+
+        try {
+            // Get all active tasks for this process instance
+            List<Task> allTasks = taskService.createTaskQuery()
+                    .processInstanceId(processInstanceId)
+                    .active()
+                    .list();
+
+            for (Task task : allTasks) {
+                String taskParticipantId = participantService.resolveParticipantForTask(task);
+                if (participantId.equals(taskParticipantId)) {
+                    result.add(task);
+                }
+            }
+        } catch (Exception e) {
+            log.error("[GPS WS] Error finding tasks for participant", e);
+        }
+
+        return result;
+    }
+
+    /**
+     * Helper classes for participant discovery
+     */
+    private static class ParticipantInfo {
+        String participantId;
+        String participantName;
+        List<Task> activeTasks = new ArrayList<>();
+        String claimedByUser = null;
+
+        ParticipantInfo(String participantId, String participantName) {
+            this.participantId = participantId;
+            this.participantName = participantName;
+        }
+    }
+
+    private static class ParticipantDiscoveryResult {
+        String participantId;
+        String participantName;
+
+        ParticipantDiscoveryResult(String participantId, String participantName) {
+            this.participantId = participantId;
+            this.participantName = participantName;
+        }
+    }
+
+
+
+
+
     private void handleLocationUpdate(WebSocketSession session, String userId, String businessKey,
                                       GpsMessage.LocationUpdate location) throws IOException {
 
@@ -129,11 +349,35 @@ public class GpsWebSocketHandler extends TextWebSocketHandler {
                 userId, businessKey, location.getLat(), location.getLon());
 
         try {
-            // Use businessKey from location if provided, otherwise from session
+
             if (location.getBusinessKey() != null && !location.getBusinessKey().isBlank()) {
                 businessKey = location.getBusinessKey();
             }
 
+            // Lazy discovery if needed
+            String existingParticipantId = userParticipantMapping.getParticipantIdForUser(businessKey, userId);
+
+            if (existingParticipantId == null && businessKey != null) {
+                log.info("[GPS WS] Attempting lazy discovery for user {} in BK {}", userId, businessKey);
+
+                UserParticipantMappingService.ParticipantDiscoveryResult discovery =
+                        userParticipantMapping.autoDiscoverAndRegister(userId, businessKey);
+
+                if (discovery != null) {
+                    log.info("[GPS WS] Lazy discovery successful: user {} is now participant {}",
+                            userId, discovery.getParticipantId());
+
+                    // Notify client
+                    Map<String, Object> assignmentData = Map.of(
+                            "participantId", discovery.getParticipantId(),
+                            "participantName", discovery.getParticipantName(),
+                            "businessKey", businessKey
+                    );
+
+                    sendMessage(session, GpsResponse.success("PARTICIPANT_ASSIGNED",
+                            "Assigned as " + discovery.getParticipantName(), assignmentData));
+                }
+            }
             // Process location for ALL active tasks with this businessKey
             Map<String, Object> result = processLocationForBusinessKey(
                     userId,
@@ -164,19 +408,21 @@ public class GpsWebSocketHandler extends TextWebSocketHandler {
             return result;
         }
 
+        // ALWAYS use the mapped participantId, not userId
         String participantId = userParticipantMapping.getParticipantIdForUser(businessKey, userId);
 
         if (participantId == null) {
-            // Se non c'è ancora mapping, usa userId come fallback
-            log.debug("[GPS WS] No participant mapping yet for user {} in BK {}, using userId",
-                    userId, businessKey);
+            log.warn("[GPS WS] No participant mapping for user {} in BK {}. " +
+                    "Cannot process location properly.", userId, businessKey);
+            // Use userId as fallback but warn
             participantId = userId;
-        } else {
-            log.debug("[GPS WS] User {} is participant {} for BK {}",
-                    userId, participantId, businessKey);
+            result.put("warning", "No participant mapping - using userId as fallback");
         }
 
-        // Aggiorna posizione per il participant
+        log.debug("[GPS WS] Processing location for user {} as participant {} in BK {}",
+                userId, participantId, businessKey);
+
+        // Update position using the correct participantId
         String currentPlace = updatePosition(participantId, lat, lon);
         result.put("currentPlace", currentPlace);
         result.put("participantId", participantId);
@@ -268,34 +514,78 @@ public class GpsWebSocketHandler extends TextWebSocketHandler {
     }
 
     private boolean checkAndSignalBindings(String businessKey, String userId) {
+        // Get the correct participant ID for this user
+        String participantId = userParticipantMapping.getParticipantIdForUser(businessKey, userId);
+
+        if (participantId == null) {
+            log.warn("[GPS WS] No participant mapping for user {} in BK {}, cannot check bindings",
+                    userId, businessKey);
+            return false;
+        }
+
         List<WaitingBinding> waitingBindings = bindingService.getAllWaitingBindings();
 
         for (WaitingBinding wb : waitingBindings) {
             if (!wb.getBusinessKey().equals(businessKey)) continue;
 
-            // Check if participants are in same place
+            // Check if this participant is involved
+            boolean isCurrentParticipant = wb.getCurrentParticipantId().equals(participantId);
+            boolean isTargetParticipant = wb.getTargetParticipantId().equals(participantId);
+
+            if (!isCurrentParticipant && !isTargetParticipant) {
+                continue;
+            }
+
+            // Determina chi è l'altro partecipante
+            String otherParticipantId = isCurrentParticipant ?
+                    wb.getTargetParticipantId() : wb.getCurrentParticipantId();
+
+            // Cerca il WaitingBinding dell'altro partecipante
+            Optional<WaitingBinding> otherWaiting = bindingService.findWaitingBinding(
+                    businessKey, otherParticipantId);
+
+            if (!otherWaiting.isPresent()) {
+                log.debug("[GPS WS] Other participant {} not waiting yet for binding", otherParticipantId);
+                continue;
+            }
+
+            // Ora controlla se sono nella stessa place
             Place bindingPlace = proximityService.getBindingPlace(
                     wb.getCurrentParticipantId(),
                     wb.getTargetParticipantId());
 
             if (bindingPlace != null) {
-                // Find matching waiting binding
-                Optional<WaitingBinding> match = bindingService.findWaitingBinding(
-                        businessKey, wb.getTargetParticipantId());
+                log.info("[GPS WS] BINDING READY - Participants {} and {} in same place: {}",
+                        wb.getCurrentParticipantId(),
+                        wb.getTargetParticipantId(),
+                        bindingPlace.getName());
 
-                if (match.isPresent()) {
-                    log.info("[GPS WS] BINDING READY - Participants in same place: {}",
-                            bindingPlace.getName());
+                // IMPORTANTE: Prendi gli executionId PRIMA di rimuovere i binding!
+                String execution1 = wb.getExecutionId();
+                String execution2 = otherWaiting.get().getExecutionId();
 
-                    // Signal both
-                    bindingService.removeWaitingBinding(businessKey, wb.getCurrentParticipantId());
-                    bindingService.removeWaitingBinding(businessKey, wb.getTargetParticipantId());
+                // Rimuovi i waiting bindings
+                bindingService.removeWaitingBinding(businessKey, wb.getCurrentParticipantId());
+                bindingService.removeWaitingBinding(businessKey, wb.getTargetParticipantId());
 
-                    runtimeService.signal(wb.getExecutionId());
-                    runtimeService.signal(match.get().getExecutionId());
-
-                    return true;
+                // Segnala ENTRAMBI gli execution
+                try {
+                    log.info("[GPS WS] Signaling execution {} for participant {}",
+                            execution1, wb.getCurrentParticipantId());
+                    runtimeService.signal(execution1);
+                } catch (Exception e) {
+                    log.error("[GPS WS] Failed to signal execution {}: {}", execution1, e.getMessage());
                 }
+
+                try {
+                    log.info("[GPS WS] Signaling execution {} for participant {}",
+                            execution2, otherWaiting.get().getCurrentParticipantId());
+                    runtimeService.signal(execution2);
+                } catch (Exception e) {
+                    log.error("[GPS WS] Failed to signal execution {}: {}", execution2, e.getMessage());
+                }
+
+                return true;
             }
         }
 
@@ -303,36 +593,114 @@ public class GpsWebSocketHandler extends TextWebSocketHandler {
     }
 
     private boolean checkAndSignalUnbindings(String businessKey, String userId) {
-        // Similar to bindings but for unbinding
+        // Get the correct participant ID
+        String participantId = userParticipantMapping.getParticipantIdForUser(businessKey, userId);
+
+        if (participantId == null) {
+            log.warn("[GPS WS] No participant mapping for user {} in BK {}, cannot check unbindings",
+                    userId, businessKey);
+            return false;
+        }
+
         List<WaitingBinding> waitingUnbindings = bindingService.getAllWaitingUnbindings();
 
         for (WaitingBinding wu : waitingUnbindings) {
             if (!wu.getBusinessKey().equals(businessKey)) continue;
 
+            // Check if this participant is involved
+            boolean isCurrentParticipant = wu.getCurrentParticipantId().equals(participantId);
+            boolean isTargetParticipant = wu.getTargetParticipantId().equals(participantId);
+
+            if (!isCurrentParticipant && !isTargetParticipant) {
+                continue;
+            }
+
+            // Determina l'altro partecipante
+            String otherParticipantId = isCurrentParticipant ?
+                    wu.getTargetParticipantId() : wu.getCurrentParticipantId();
+
+            // Cerca il WaitingBinding dell'altro
+            Optional<WaitingBinding> otherWaiting = bindingService.findWaitingUnbinding(
+                    businessKey, otherParticipantId);
+
+            if (!otherWaiting.isPresent()) {
+                log.debug("[GPS WS] Other participant {} not waiting yet for unbinding", otherParticipantId);
+                continue;
+            }
+
+            // Controlla se sono nella stessa place
             Place unbindingPlace = proximityService.getBindingPlace(
                     wu.getCurrentParticipantId(),
                     wu.getTargetParticipantId());
 
             if (unbindingPlace != null) {
-                Optional<WaitingBinding> match = bindingService.findWaitingUnbinding(
-                        businessKey, wu.getTargetParticipantId());
+                log.info("[GPS WS] UNBINDING READY - Participants {} and {} in same place: {}",
+                        wu.getCurrentParticipantId(),
+                        wu.getTargetParticipantId(),
+                        unbindingPlace.getName());
 
-                if (match.isPresent()) {
-                    log.info("[GPS WS] UNBINDING READY - Participants in same place: {}",
-                            unbindingPlace.getName());
+                // IMPORTANTE: Salva gli executionId PRIMA di rimuovere
+                String execution1 = wu.getExecutionId();
+                String execution2 = otherWaiting.get().getExecutionId();
 
+                // Verifica che gli execution esistano ancora
+                if (isExecutionActive(execution1)) {
+                    log.error("[GPS WS] Execution {} for participant {} is no longer active!",
+                            execution1, wu.getCurrentParticipantId());
+                    // Rimuovi il binding non valido
                     bindingService.removeWaitingUnbinding(businessKey, wu.getCurrentParticipantId());
-                    bindingService.removeWaitingUnbinding(businessKey, wu.getTargetParticipantId());
-
-                    runtimeService.signal(wu.getExecutionId());
-                    runtimeService.signal(match.get().getExecutionId());
-
-                    return true;
+                    continue;
                 }
+
+                if (isExecutionActive(execution2)) {
+                    log.error("[GPS WS] Execution {} for participant {} is no longer active!",
+                            execution2, otherWaiting.get().getCurrentParticipantId());
+                    // Rimuovi il binding non valido
+                    bindingService.removeWaitingUnbinding(businessKey, otherParticipantId);
+                    continue;
+                }
+
+                // Rimuovi i waiting unbindings
+                bindingService.removeWaitingUnbinding(businessKey, wu.getCurrentParticipantId());
+                bindingService.removeWaitingUnbinding(businessKey, wu.getTargetParticipantId());
+
+                // Segnala ENTRAMBI
+                try {
+                    log.info("[GPS WS] Signaling unbinding execution {} for participant {}",
+                            execution1, wu.getCurrentParticipantId());
+                    runtimeService.signal(execution1);
+                } catch (Exception e) {
+                    log.error("[GPS WS] Failed to signal unbinding execution {}: {}",
+                            execution1, e.getMessage());
+                }
+
+                try {
+                    log.info("[GPS WS] Signaling unbinding execution {} for participant {}",
+                            execution2, otherWaiting.get().getCurrentParticipantId());
+                    runtimeService.signal(execution2);
+                } catch (Exception e) {
+                    log.error("[GPS WS] Failed to signal unbinding execution {}: {}",
+                            execution2, e.getMessage());
+                }
+
+                return true;
             }
         }
 
         return false;
+    }
+
+    // Metodo helper per verificare se un execution è ancora attivo
+    private boolean isExecutionActive(String executionId) {
+        try {
+            Execution execution = runtimeService.createExecutionQuery()
+                    .executionId(executionId)
+                    .singleResult();
+            return execution != null;
+        } catch (Exception e) {
+            log.error("[GPS WS] Error checking execution {}: {}", executionId, e.getMessage());
+            return false;
+        }
     }
 
     private String getBusinessKey(WebSocketSession session) {
@@ -372,8 +740,6 @@ public class GpsWebSocketHandler extends TextWebSocketHandler {
                 "Stopped tracking for business key: " + stop.getBusinessKey(),
                 null));
     }
-
-
 
     private String getUserId(WebSocketSession session) {
         return (String) session.getAttributes().get("userId");

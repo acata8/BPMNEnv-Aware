@@ -16,6 +16,7 @@ import org.camunda.bpm.model.bpmn.instance.ExtensionElements;
 import org.camunda.bpm.model.bpmn.instance.FlowNode;
 import org.camunda.bpm.model.xml.instance.ModelElementInstance;
 import org.springframework.stereotype.Service;
+import org.unicam.intermediate.service.TaskAuthorizationService;
 import org.unicam.intermediate.service.participant.ParticipantService;
 import org.unicam.intermediate.service.participant.UserParticipantMappingService;
 
@@ -35,39 +36,10 @@ public class TaskTrackingService {
     private final ParticipantService participantService;
     private final UserParticipantMappingService userParticipantMapping;
     private final RepositoryService repositoryService;
-    private final IdentityService identityService;
+    private final TaskAuthorizationService taskAuthorizationService;
 
     public boolean canUserAccessTask(String userId, Task task) {
-        // Check if user is assignee
-        if (userId.equals(task.getAssignee())) {
-            return true;
-        }
-
-        // Check if user is candidate user
-        List<String> candidateUsers = taskService.getIdentityLinksForTask(task.getId()).stream()
-                .filter(link -> "candidate".equals(link.getType()) && link.getUserId() != null)
-                .map(link -> link.getUserId())
-                .collect(Collectors.toList());
-
-        if (candidateUsers.contains(userId)) {
-            return true;
-        }
-
-        // Check if user is in candidate group
-        List<Group> userGroups = identityService.createGroupQuery()
-                .groupMember(userId)
-                .list();
-
-        Set<String> userGroupIds = userGroups.stream()
-                .map(Group::getId)
-                .collect(Collectors.toSet());
-
-        List<String> candidateGroups = taskService.getIdentityLinksForTask(task.getId()).stream()
-                .filter(link -> "candidate".equals(link.getType()) && link.getGroupId() != null)
-                .map(link -> link.getGroupId())
-                .collect(Collectors.toList());
-
-        return candidateGroups.stream().anyMatch(userGroupIds::contains);
+        return taskAuthorizationService.canUserAccessTask(userId, task);
     }
 
     public void clearTrackingIfTaskMatches(String userId, String taskId) {
@@ -181,7 +153,7 @@ public class TaskTrackingService {
             if (pi != null) {
                 taskMap.put("businessKey", pi.getBusinessKey());
 
-                // Aggiungi participant info
+                // Participant info
                 String participantId = participantService.resolveParticipantForTask(task);
                 taskMap.put("participantId", participantId);
 
