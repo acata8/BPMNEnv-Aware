@@ -593,7 +593,6 @@ public class GpsWebSocketHandler extends TextWebSocketHandler {
     }
 
     private boolean checkAndSignalUnbindings(String businessKey, String userId) {
-        // Get the correct participant ID
         String participantId = userParticipantMapping.getParticipantIdForUser(businessKey, userId);
 
         if (participantId == null) {
@@ -615,11 +614,11 @@ public class GpsWebSocketHandler extends TextWebSocketHandler {
                 continue;
             }
 
-            // Determina l'altro partecipante
+            // Find the other participant
             String otherParticipantId = isCurrentParticipant ?
                     wu.getTargetParticipantId() : wu.getCurrentParticipantId();
 
-            // Cerca il WaitingBinding dell'altro
+            // Check if both are waiting for unbinding
             Optional<WaitingBinding> otherWaiting = bindingService.findWaitingUnbinding(
                     businessKey, otherParticipantId);
 
@@ -628,7 +627,7 @@ public class GpsWebSocketHandler extends TextWebSocketHandler {
                 continue;
             }
 
-            // Controlla se sono nella stessa place
+            // CRITICAL FIX: Use CURRENT positions to check proximity
             Place unbindingPlace = proximityService.getBindingPlace(
                     wu.getCurrentParticipantId(),
                     wu.getTargetParticipantId());
@@ -639,32 +638,28 @@ public class GpsWebSocketHandler extends TextWebSocketHandler {
                         wu.getTargetParticipantId(),
                         unbindingPlace.getName());
 
-                // IMPORTANTE: Salva gli executionId PRIMA di rimuovere
                 String execution1 = wu.getExecutionId();
                 String execution2 = otherWaiting.get().getExecutionId();
 
-                // Verifica che gli execution esistano ancora
-                if (isExecutionActive(execution1)) {
+                if (!isExecutionActive(execution1)) {
                     log.error("[GPS WS] Execution {} for participant {} is no longer active!",
                             execution1, wu.getCurrentParticipantId());
-                    // Rimuovi il binding non valido
                     bindingService.removeWaitingUnbinding(businessKey, wu.getCurrentParticipantId());
                     continue;
                 }
 
-                if (isExecutionActive(execution2)) {
+                if (!isExecutionActive(execution2)) {
                     log.error("[GPS WS] Execution {} for participant {} is no longer active!",
                             execution2, otherWaiting.get().getCurrentParticipantId());
-                    // Rimuovi il binding non valido
                     bindingService.removeWaitingUnbinding(businessKey, otherParticipantId);
                     continue;
                 }
 
-                // Rimuovi i waiting unbindings
+                // Remove BOTH unbindings using correct keys
                 bindingService.removeWaitingUnbinding(businessKey, wu.getCurrentParticipantId());
-                bindingService.removeWaitingUnbinding(businessKey, wu.getTargetParticipantId());
+                bindingService.removeWaitingUnbinding(businessKey, otherParticipantId);
 
-                // Segnala ENTRAMBI
+                // Signal both executions
                 try {
                     log.info("[GPS WS] Signaling unbinding execution {} for participant {}",
                             execution1, wu.getCurrentParticipantId());
@@ -676,7 +671,7 @@ public class GpsWebSocketHandler extends TextWebSocketHandler {
 
                 try {
                     log.info("[GPS WS] Signaling unbinding execution {} for participant {}",
-                            execution2, otherWaiting.get().getCurrentParticipantId());
+                            execution2, otherParticipantId);
                     runtimeService.signal(execution2);
                 } catch (Exception e) {
                     log.error("[GPS WS] Failed to signal unbinding execution {}: {}",
@@ -684,6 +679,11 @@ public class GpsWebSocketHandler extends TextWebSocketHandler {
                 }
 
                 return true;
+            } else {
+                // Debug why they're not in same place
+                ProximityService.BindingReadiness readiness = proximityService.checkBindingReadiness(
+                        wu.getCurrentParticipantId(), wu.getTargetParticipantId());
+                log.debug("[GPS WS] Unbinding not ready: {}", readiness.message());
             }
         }
 
