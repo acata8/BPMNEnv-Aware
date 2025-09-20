@@ -432,20 +432,18 @@ public class GpsWebSocketHandler extends TextWebSocketHandler {
 
         // 1. Check movement tasks
         boolean movementCompleted = checkAndSignalMovementTasks(businessKey, userId, lat, lon);
+        boolean bindingReady = checkAndSignalBindings(businessKey, userId);
+        boolean unbindingReady = checkAndSignalUnbindings(businessKey, userId);
+
         if (movementCompleted) {
             triggeredEvents.add("MOVEMENT_COMPLETED");
-        }
-
-        // 2. Check binding readiness
-        boolean bindingReady = checkAndSignalBindings(businessKey, userId);
-        if (bindingReady) {
+        }else if (bindingReady) {
             triggeredEvents.add("BINDING_READY");
-        }
-
-        // 3. Check unbinding readiness
-        boolean unbindingReady = checkAndSignalUnbindings(businessKey, userId);
-        if (unbindingReady) {
+        }else if (unbindingReady) {
             triggeredEvents.add("UNBINDING_READY");
+        }else{
+            log.debug("[GPS WS] No movement tasks or bindings ready for user {} in BK {}",
+                    userId, businessKey);
         }
 
         result.put("triggeredEvents", triggeredEvents);
@@ -620,14 +618,13 @@ public class GpsWebSocketHandler extends TextWebSocketHandler {
 
             // Check if both are waiting for unbinding
             Optional<WaitingBinding> otherWaiting = bindingService.findWaitingUnbinding(
-                    businessKey, otherParticipantId);
+                    businessKey, wu.getCurrentParticipantId());
 
             if (!otherWaiting.isPresent()) {
                 log.debug("[GPS WS] Other participant {} not waiting yet for unbinding", otherParticipantId);
                 continue;
             }
 
-            // CRITICAL FIX: Use CURRENT positions to check proximity
             Place unbindingPlace = proximityService.getBindingPlace(
                     wu.getCurrentParticipantId(),
                     wu.getTargetParticipantId());
