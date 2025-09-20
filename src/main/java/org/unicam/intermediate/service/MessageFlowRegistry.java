@@ -54,8 +54,8 @@ public class MessageFlowRegistry {
             MessageFlowBinding binding = new MessageFlowBinding();
             binding.setFlowId(flow.getId());
             binding.setType(flowType);
-            binding.setSourceParticipantRef(extractExtensionValue(ext, "sourceRef"));
-            binding.setTargetParticipantRef(extractExtensionValue(ext, "targetRef"));
+            binding.setSourceParticipantRef(extractExtensionValue(ext, "participant1"));
+            binding.setTargetParticipantRef(extractExtensionValue(ext, "participant2"));
 
             // Get task references from the flow source and target
             if (flow.getSource() != null) {
@@ -86,7 +86,6 @@ public class MessageFlowRegistry {
      * Try to register flows after deployment if not done during parsing
      */
     public void ensureFlowsRegistered(String processDefinitionId) {
-        String testKey = processDefinitionId + ":test";
         if (!flowBindings.keySet().stream().anyMatch(k -> k.startsWith(processDefinitionId + ":"))) {
             try {
                 if (repositoryService != null) {
@@ -102,9 +101,7 @@ public class MessageFlowRegistry {
     }
 
     public MessageFlowBinding getFlowBinding(String processDefinitionId, String taskId) {
-        // Ensure flows are registered (in case parse listener couldn't access repository)
         ensureFlowsRegistered(processDefinitionId);
-
         return flowBindings.get(processDefinitionId + ":" + taskId);
     }
 

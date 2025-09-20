@@ -6,8 +6,8 @@ import lombok.Getter;
 public enum ExtendedElementTaskType {
     DESTINATION("destination"),
     BINDING("binding"),
-    BINDING_PARTICIPANT("sourceRef"),
-    BINDED_PARTICIPANT("targerRef"),
+    BINDING_PARTICIPANT("participant1"),
+    BINDED_PARTICIPANT("participant2"),
     TYPE("type");
 
     private final String xmlValue;
